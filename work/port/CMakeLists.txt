@@ -179,6 +179,8 @@ add_executable(${PROJECT_NAME}
     main.cpp
     settings.cpp
     ui.cpp
+    ui_game.cpp
+    ui_saves.cpp
     stubs.cpp
     port_patches.cpp
     ${PS3RECOMP_SCAFFOLD}
@@ -230,10 +232,11 @@ if(SPU_SOURCES)
     endif()
 endif()
 
-# The in-game menu (ui.cpp) draws with the toolkit's rsx_ui and Dear ImGui when
-# the toolkit built them (PS3RECOMP_UI_ACTIVE: the Vulkan backend, the ImGui
-# checkout, -DPS3RECOMP_UI not OFF). The define and the include directory go on
-# ui.cpp alone: on the whole target they would rebuild every lifted TU.
+# The start screen and in-game menu (ui.cpp, ui_game.cpp, ui_saves.cpp) draw
+# with the toolkit's rsx_ui and Dear ImGui when the toolkit built them
+# (PS3RECOMP_UI_ACTIVE: the Vulkan or Metal backend, the ImGui checkout,
+# -DPS3RECOMP_UI not OFF). The defines and include directories go on those
+# files alone: on the whole target they would rebuild every lifted TU.
 if(PS3RECOMP_UI_ACTIVE)
     # ui.cpp reads the pad through SDL for its Controller page; Homebrew's
     # headers are not on the compiler's default path.
@@ -248,10 +251,30 @@ if(PS3RECOMP_UI_ACTIVE)
             endif()
         endforeach()
     endif()
+    # The start screen's background is the disc's own PIC1.PNG, read with
+    # libpng when the system has it (Debian/Ubuntu: libpng-dev, Fedora:
+    # libpng-devel, macOS: brew install libpng); without it, a gradient.
+    # After the Apocalypse port's CMakeLists.txt.
+    set(PORT_UI_DEFS PS3RECOMP_UI)
+    find_package(PNG QUIET)
+    if(PNG_FOUND)
+        target_link_libraries(${PROJECT_NAME} PRIVATE ${PNG_LIBRARIES})
+        list(APPEND PORT_UI_INCLUDES ${PNG_INCLUDE_DIRS})
+        set(PORT_UI_PNG_DEFS PS3RECOMP_UI PORT_HAVE_PNG=1)
+    else()
+        set(PORT_UI_PNG_DEFS PS3RECOMP_UI)
+    endif()
     set_source_files_properties(ui.cpp PROPERTIES
-        COMPILE_DEFINITIONS PS3RECOMP_UI
+        COMPILE_DEFINITIONS "${PORT_UI_PNG_DEFS}"
         INCLUDE_DIRECTORIES "${PORT_UI_INCLUDES}")
-    message(STATUS "In-game menu:    on (F1, F10)")
+    set_source_files_properties(ui_game.cpp ui_saves.cpp PROPERTIES
+        COMPILE_DEFINITIONS "${PORT_UI_DEFS}"
+        INCLUDE_DIRECTORIES "${PORT_UI_INCLUDES}")
+    if(PNG_FOUND)
+        message(STATUS "In-game menu:    on (start screen with PIC1.PNG, F1, F10)")
+    else()
+        message(STATUS "In-game menu:    on (start screen without its picture: no libpng; F1, F10)")
+    endif()
 else()
     message(STATUS "In-game menu:    off")
 endif()
@@ -283,7 +306,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 # the runtime's precise sleeps, as the runtime library does (ps3emu/host_time.h).
 # Set per source: on the whole target it would rebuild every lifted TU.
 if(APPLE)
-    set_source_files_properties(main.cpp settings.cpp ui.cpp stubs.cpp port_patches.cpp
+    set_source_files_properties(main.cpp settings.cpp ui.cpp ui_game.cpp ui_saves.cpp stubs.cpp port_patches.cpp
         ${PS3RECOMP_SCAFFOLD} PROPERTIES
         COMPILE_OPTIONS "-include;${PS3RECOMP_DIR}/include/ps3emu/host_time.h")
 endif()

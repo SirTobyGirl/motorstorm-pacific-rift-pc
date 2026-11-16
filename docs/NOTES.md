@@ -585,3 +585,50 @@ ones (the job wait) repeat within a few fps.
 - Audio through a real device, a controller, saves and the 4K path were not
   exercised beyond starting: the port was driven offscreen with the pad file,
   and in a window for the menu, full screen, 2x scale and upscaler checks.
+
+## Start screen and menus (2026-11-16)
+
+After the RACiT launcher (Ratchet & Clank: A Crack in Time's PC port), the
+port opens on a start screen over the disc's PIC1.PNG before the game boots:
+Play, Settings, Saves, Game files, Help, Quit.
+
+- **Boot gate.** As in the Apocalypse port: `port_ui_init` before the frame
+  clock, `port_ui_backend_ready` on the frame clock once the window is open
+  (shows the screen, modal), `port_ui_wait_start` in `main` before the guest
+  runs. Offscreen runs, `--play`, `PS3_SKIP_START=1` (every `INST` run) and
+  `[launcher] skip_start` boot at once. Under the start screen the frame clock
+  presents ~60 times a second instead of once per 1 ms poll.
+- **Settings read at start** (scale, fps, stretch, camera shake, catch-up,
+  folders): Play on the start screen restarts the process with them
+  (`execve`, `PS3_SKIP_START=1`), which costs only the start-up since nothing
+  has booted. `port_settings_restart_env` drops the variables this run
+  exported from the file, so the new process reads the file again rather than
+  seeing them as set by the user (which would pin them).
+- **Pinned rows.** `port_settings_note_env` records which variables the user
+  set before export; those rows are greyed out with the variable on hover. The
+  folder lookups (`port_paths_*`) read that snapshot, not the live
+  environment, or a change on the Game files page would hide behind the value
+  this run exported.
+- **No game.** If EBOOT.elf does not load, a windowed run still opens on the
+  Game files page with Play off (`main` waits on the start screen, then exits);
+  choosing the folder and pressing Play restarts into it.
+- **Pads on the start screen.** Before the boot nothing has started SDL's
+  controller support. `port_ui_backend_ready` starts it on the frame-clock
+  thread (the one pumping the window's events) while the game is not yet
+  running, so the cellPadInit race the macOS work found
+  (`g_pad_sdl_ready`) cannot happen; the Controller page reads pads on the
+  start screen on that basis. Not on macOS (AppKit/GameController there).
+- **Fonts.** The toolkit fell back to ImGui's 13 px bitmap font when Inter or
+  Noto Sans *Medium* was missing (Debian/Ubuntu have Noto Sans Regular only),
+  and drew titles by scaling that bitmap font 3x: pixelated. rsx_ui now also
+  looks for Noto Sans Regular, Ubuntu, DejaVu and Liberation, takes
+  `PS3RECOMP_UI_TITLE_FONT`, and falls back to the body font's file at 3x for
+  titles. The port passes the game's own menu font (`framdcn.ttf`, which the
+  game unpacks beside the disc folder on its first run) as the title font.
+- **PIC1.PNG** has a blank white box where the PS3 laid the icon; it sits
+  behind the menu, so the main page's panel is near-opaque (0.90).
+- Pages: `ui.cpp` (start screen, Display/Gameplay/Controller/Keys, HUD),
+  `ui_game.cpp` (folder checks incl. the EBOOT.elf SHA-256 in a background
+  thread, PARAM.SFO title id, `ms2.psarc` magic; a pad-friendly folder
+  picker), `ui_saves.cpp` (backups in `user/backups/<time>-<why>`, pruning,
+  restore via a staging folder, start screen only).

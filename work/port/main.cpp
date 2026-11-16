@@ -273,6 +273,7 @@ static DWORD WINAPI frame_clock(LPVOID)
     int rsx_ok = (rsx_backend_init(WINDOW_WIDTH, WINDOW_HEIGHT, title) == 0);
     fprintf(stderr, "[rsx] %s backend init %s\n", RSX_BACKEND_NAME,
             rsx_ok ? "OK -- window open" : "FAILED");
+    port_ui_backend_ready();   /* the start screen, if any: the boot waits on its Play */
 
     unsigned  last_flip = 0;
     /* Vblank period and loop cadence, in nanoseconds. The tick used to be a
@@ -381,7 +382,15 @@ static DWORD WINAPI frame_clock(LPVOID)
              * drain mid-frame and flash a partial one. Before the first flip
              * present freely, so the window is not blank during boot. */
             present_if_flipped();
-            if (cellGcm_flip_request_count() == 0) rsx_backend_present();
+            if (cellGcm_flip_request_count() == 0) {
+                /* Under the start screen nothing else is drawn: about 60
+                 * presents a second rather than one per poll. */
+                static unsigned long long last_boot_present = 0;
+                if (!port_ui_start_screen() || now - last_boot_present >= 16000000ull) {
+                    rsx_backend_present();
+                    last_boot_present = now;
+                }
+            }
         }
     }
     return 0;
@@ -540,6 +549,7 @@ int main(int argc, char** argv)
     { int n = 1;
       for (int i = 1; i < argc; i++) {
           if (strcmp(argv[i], "--offscreen") == 0) setenv("PS3RECOMP_VK_WINDOW", "0", 1);
+          else if (strcmp(argv[i], "--play") == 0) setenv("PS3_SKIP_START", "1", 1);   /* no start screen */
           else argv[n++] = argv[i];
       }
       argc = n; argv[argc] = nullptr;
@@ -565,7 +575,7 @@ int main(int argc, char** argv)
       if (st && *st) setenv("PS3RECOMP_METAL_FRAME_SEQ_TRIGGER", st, 0); }
 #endif
     if (argc < 2) {
-        printf("usage: %s [--offscreen] <PPU ELF>\n", argv[0]);
+        printf("usage: %s [--offscreen] [--play] <PPU ELF>\n", argv[0]);
         return 2;
     }
 
@@ -736,13 +746,41 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    uint32_t entry = ppu_load_elf(argv[1]);
-    if (!entry) {
-        fprintf(stderr, "ERROR: could not load %s\n", argv[1]);
-        return 1;
+    /* A windowed run: the player's settings (user/settings.ini) become the
+     * environment the backend reads, below anything already set, and the
+     * start screen and menu hook into the window. Offscreen runs (tests,
+     * benchmarks) skip both. The game folder may come from the settings
+     * (the start screen's Game page) instead of the command line. */
+    const char* w_env = getenv("PS3RECOMP_VK_WINDOW");
+    const bool windowed = w_env && w_env[0] && w_env[0] != '0';
+    port_paths_set_cmdline_game(argv[1]);
+    std::string elf_path = argv[1];
+    if (windowed) {
+        port_settings* ps = port_settings_get();
+        const int had = port_settings_load(ps, port_settings_path());
+        port_settings_note_env();
+        port_settings_export(ps);
+        if (ps->game_dir[0]) elf_path = port_paths_eboot(ps->game_dir);
+        printf("[settings] %s %s: fullscreen %d, scale %d, upscaler %s, fps %d, FPS counter %d\n",
+               had ? "read" : "defaults, no", port_settings_path(), ps->fullscreen, ps->scale,
+               ps->upscaler ? "on" : "off", ps->fps, ps->fps_counter);
+        printf("[settings] game %s, dev_flash %s, saves %s\n", port_paths_game(ps),
+               port_paths_dev_flash(ps), port_paths_saves(ps));
+    } else if (!getenv("PS3_DEV_FLASH")) {
+        setenv("PS3_DEV_FLASH", port_paths_dev_flash(nullptr), 0);
     }
 
-    derive_vfs_root(argv[1]);
+    /* No game where it should be: a windowed run with the UI still opens,
+     * on the start screen's Game page, where the player can point it at the
+     * game (which starts the process again). */
+    uint32_t entry = ppu_load_elf(elf_path.c_str());
+    const bool no_game = !entry;
+    if (no_game) {
+        fprintf(stderr, "ERROR: could not load %s\n", elf_path.c_str());
+        if (!windowed || !port_ui_built()) return 1;
+        fprintf(stderr, "[boot] no game: the start screen asks where it is\n");
+    }
+    derive_vfs_root(elf_path.c_str());
     printf("[boot] VFS root: %s\n", ppu_vfs_root);
 
     ppu_recomp_register();   /* lifted function table -> address map */
@@ -756,19 +794,8 @@ int main(int argc, char** argv)
      * until the title registers its vblank and flip handlers during init. */
     g_ps3_guest_caller = harness_guest_caller;
 
-    /* A windowed run: the player's settings (user/settings.ini) become the
-     * environment the backend reads, below anything already set, and the
-     * menu hooks into the window. Offscreen runs skip both. */
-    { const char* w = getenv("PS3RECOMP_VK_WINDOW");
-      if (w && w[0] && w[0] != '0') {
-          port_settings* ps = port_settings_get();
-          const int had = port_settings_load(ps, port_settings_path());
-          port_settings_export(ps);
-          printf("[settings] %s %s: fullscreen %d, scale %d, upscaler %s, fps %d, FPS counter %d\n",
-                 had ? "read" : "defaults, no", port_settings_path(), ps->fullscreen, ps->scale,
-                 ps->upscaler ? "on" : "off", ps->fps, ps->fps_counter);
-          port_ui_init();
-      } }
+    /* The start screen, the in-game menu (F1) and the HUD (F10). */
+    if (windowed) port_ui_init(argc, argv, no_game ? 0 : 1);
 
     /* 60 fps mode: the engine's scheduled full texture hash (a change its
      * sparse check misses) every 16 frames instead of 8, the same delay in
@@ -783,6 +810,15 @@ int main(int argc, char** argv)
       } }
 
     CreateThread(NULL, 4u * 1024 * 1024, frame_clock, NULL, 0, NULL);
+
+    /* The start screen holds the boot until Play (at once without one). With
+     * no game Play stays off: the process ends from the window, or starts
+     * again from the Game page. */
+    port_ui_wait_start();
+    if (no_game) {
+        fprintf(stderr, "ERROR: no game to start\n");
+        return 1;
+    }
 
     printf("\n[boot] dispatching entry OPD 0x%08X (stack top 0x%08X)\n\n",
            entry, STACK_TOP);

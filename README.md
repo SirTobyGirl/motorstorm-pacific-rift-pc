@@ -50,7 +50,7 @@ shaders translated to Vulkan on Linux and to Metal on macOS.
 | Game speed: 30 fps, as the game ships | ✅ correct speed, holds 30 fps |
 | 60 fps mode (opt-in, game timestep patched, correct speed) | ✅ holds 60 fps in races at 1440p; dips in the slow-motion crash replay |
 | Render scale (720p / 1440p / 4K) and upscaling (AMD FSR 1 on Vulkan, MetalFX on Metal) | ✅ |
-| In-game menu (F1), performance HUD (F10), settings file | ✅ |
+| Start screen (Play, settings, saves, game files), in-game menu (F1), performance HUD (F10), settings file | ✅ |
 | Pad (SDL2 game controller) | ✅ |
 | Saves, other modes and tracks | 🔧 not checked end to end |
 | Online play | ❌ not planned (the servers are gone) |
@@ -100,8 +100,11 @@ Technical notes: [docs/NOTES.md](docs/NOTES.md).
 
   ```sh
   sudo apt install git rsync cmake ninja-build clang python3 python3-venv \
-      libsdl2-dev libvulkan-dev glslang-dev glslang-tools spirv-tools
+      libsdl2-dev libvulkan-dev glslang-dev glslang-tools spirv-tools libpng-dev
   ```
+
+  libpng is optional: it draws the start screen over the game's own
+  artwork (a plain backdrop without it).
 
   `ffmpeg` is only needed by the test scripts in `work/tools/`.
 
@@ -113,7 +116,7 @@ Technical notes: [docs/NOTES.md](docs/NOTES.md).
   [Homebrew](https://brew.sh):
 
   ```sh
-  brew install cmake ninja sdl2 glslang spirv-cross
+  brew install cmake ninja sdl2 glslang spirv-cross libpng
   ```
 
   glslang and spirv-cross translate the game's shaders to Metal's language;
@@ -214,8 +217,15 @@ built there.
 work/run.sh
 ```
 
-`work/run.sh` sets up the environment (the `dev_flash` path: `./dev_flash`
-when it exists, else RPCS3's copy; `hdd0/` for saves), runs `work/port/build/PacificRiftRecomp` on
+The game opens on its start screen: **Play** (backs up your saves first, then
+boots the game), **Settings**, **Saves**, **Game files** (where the game, the
+firmware and the saves are, each checked), **Help** and **Quit**. A pad, the
+keyboard or the mouse all work there. `work/run.sh --play` (or
+`PS3_SKIP_START=1`, or the option under Settings > Gameplay) boots straight
+into the game.
+
+`work/run.sh` sets up the environment (`./dev_flash` when it exists, else the
+Game files page's folder or RPCS3's copy; `gamedata/` for saves), runs `work/port/build/PacificRiftRecomp` on
 `disc/PS3_GAME/USRDIR/EBOOT.elf` and logs to `work/runs/<time>.log`
 (`work/runs/latest.log` points at the newest). The game opens a window;
 `work/run.sh --offscreen` renders offscreen instead (the test scripts' `INST`
@@ -229,18 +239,34 @@ in the window).
 
 ## Settings
 
-### In-game menu and keys
+### Start screen, menu and keys
 
 | Key | Action |
 |---|---|
-| **F1**, or Select+Start held half a second | Port menu (Escape closes it); the game sees a neutral pad while it is open |
+| **F1**, or Select+Start held half a second | The settings in game (Escape closes them); the game sees a neutral pad while they are open |
 | **F10** | Performance HUD: detailed, compact, off |
 | **F11** or **Alt+Enter** (macOS: **Option+Return**, or the green button) | Full screen and back |
 
-Every menu change is saved to `user/settings.ini` at once. The upscaler (FSR 1
-on Linux, MetalFX on macOS) and its sharpness apply immediately; the resolution scale and frame rate are read
-at start, and the menu has a *Restart now* button for them. The frame keeps
-its 16:9 shape in any window size, with black bars where needed.
+The settings, on the start screen and in game (F1):
+
+| Page | What is there |
+|---|---|
+| Display | Full screen, picture shape (16:9 with black bars, or stretched), resolution (720p, 1440p, 4K), FSR 1 / MetalFX upscaling and sharpness |
+| Gameplay | 30 or 60 fps, frame-time catch-up (60 fps), camera shake, the performance HUD, skipping the start screen |
+| Controller | The controllers found, a live button test |
+| Saves | The saves (title, date, size), back up now, backups kept, restore (start screen only), delete; Play backs up first unless turned off |
+| Game files | The game folder (EBOOT.elf decrypted and the right version by its checksum, PARAM.SFO, `ms2.psarc` joined), `dev_flash` and the saves folder, each with a folder picker |
+| Keys / Help | The keys; the version, the logs and settings folders |
+
+Every change is saved to `user/settings.ini` at once. The upscaler and its
+sharpness apply immediately. What is read at start (resolution, frame rate,
+picture shape, camera shake, catch-up, folders) applies when Play is pressed on
+the start screen, which starts the process again with it; in game the page
+offers *Restart now*. Save backups go to `user/backups/`.
+
+The menus use the game's own menu font once the game has unpacked it on its
+first run (`disc/framdcn.ttf`), and a system sans (Inter, Noto Sans, DejaVu or
+Liberation) for the text.
 
 ### user/settings.ini
 
@@ -253,10 +279,25 @@ fullscreen = 0
 scale = 1            ; 1 = 720p, 2 = 1440p, 3 = 4K render targets (restart)
 upscaler = off       ; off, or fsr (Linux: AMD FSR 1) / metalfx (macOS), to the window's size
 fsr_sharpness = 0.80 ; the upscaler's sharpening, 0..1, 1 = sharpest
+stretch = 0          ; 0 = keep the 16:9 shape, 1 = fill the window (restart)
 fps = 30             ; 30 (original) or 60 (restart)
+
+[game]
+camera_shake = 0     ; the game's own camera shake (restart)
+catch_up = 0         ; 60 fps mode: a late frame makes up the lost time (restart)
 
 [performance]
 fps_counter = 1      ; HUD: 0 = off, 1 = detailed, 2 = compact
+
+[launcher]
+skip_start = 0       ; 1 = no start screen
+backup_on_play = 1   ; back up the saves each time Play is pressed
+keep_backups = 8     ; save backups kept (0 = all)
+
+[paths]              ; empty = the default
+game =               ; the folder holding PS3_GAME (default: disc/)
+dev_flash =          ; default: ./dev_flash, else RPCS3's
+saves =              ; default: gamedata/
 ```
 
 ### Environment variables
@@ -276,8 +317,13 @@ each one on to the Metal backend's own switch, so the table holds for both.
 | `PS3RECOMP_DT_MAX=2` | 60 fps mode: a late frame makes up the lost time (default 1, off: every frame is 1/60 s, so the game runs slightly slow below 60 fps; the catch-up makes the car lurch and riders fall) |
 | `PS3RECOMP_CAMERA_SHAKE=1` | Keep the game's camera shake (default: off, a steady camera at both 30 and 60 fps) |
 | `PS3RECOMP_SHAKE_60=1` | With camera shake on, 60 fps mode: step it every frame (stronger shake) |
-| `PS3_DEV_FLASH=<dir>` | Firmware `dev_flash` (run.sh default: `./dev_flash`, else RPCS3's: `~/.config/rpcs3/dev_flash`, on macOS `~/Library/Application Support/rpcs3/dev_flash`) |
-| `PS3_HDD0_ROOT=<dir>` | Save data (run.sh default: `hdd0/`) |
+| `PS3_DEV_FLASH=<dir>` | Firmware `dev_flash`, over the Game files page (default: `./dev_flash`, else the page's folder, else RPCS3's: `~/.config/rpcs3/dev_flash`, on macOS `~/Library/Application Support/rpcs3/dev_flash`) |
+| `PS3_GAMEDATA_ROOT=<dir>` | Where the saves live (`<dir>/dev_hdd0/home/00000001/savedata`), over the Game files page (default `gamedata/`) |
+| `PS3_HDD0_ROOT=<dir>` | The PS3 hard drive's game data (run.sh default: `hdd0/`) |
+| `PS3_SKIP_START=1` | No start screen (as `work/run.sh --play`); `INST` test runs set it |
+| `PS3_UI_PAGE=settings`, `saves`, `game` or `help` | Open the start screen on that page (with `PS3RECOMP_UI_SHOT`, for screenshots) |
+| `PS3_UI_AUTOPLAY_MS=<ms>` | Press the start screen's Play by itself after that long |
+| `PS3RECOMP_UI_FONT=<file.ttf>`, `PS3RECOMP_UI_TITLE_FONT=<file.ttf>` | The menus' text and title fonts |
 | `PS3_USER_DIR=<dir>` | Where `settings.ini` and `shader_cache/` live (default `user/`) |
 | `PS3RECOMP_SPIRV_CACHE=<dir>` or `0` | Translated-shader cache (default `user/shader_cache`) or none; on macOS it also holds the translated Metal shaders and the pipeline list the next start prewarms |
 | `PS3RECOMP_FLIPLOG=<file>` | Log a timestamp per presented frame (`work/tools/fliplog.py` reads it) |

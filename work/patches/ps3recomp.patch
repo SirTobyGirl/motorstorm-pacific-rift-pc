@@ -9570,10 +9570,10 @@ index 4aa4a176..54333fcd 100644
      }
 diff --git a/libs/video/rsx_ui.cpp b/libs/video/rsx_ui.cpp
 new file mode 100644
-index 00000000..9aafee84
+index 00000000..c1784628
 --- /dev/null
 +++ b/libs/video/rsx_ui.cpp
-@@ -0,0 +1,800 @@
+@@ -0,0 +1,832 @@
 +/*
 + * ps3recomp - a user interface over the game's window (Dear ImGui, Vulkan).
 + * See rsx_ui.h for the threads, rsx_ui_vk.h for the backend's side.
@@ -9917,7 +9917,8 @@ index 00000000..9aafee84
 +/* Whether anything is up to draw. */
 +bool shown() { return U.visible || U.menu || U.modal; }
 +
-+/* The font: Inter where the system has it, ImGui's own otherwise. Baked
++/* The font: Inter where the system has it, else a common sans (Noto, Ubuntu,
++ * DejaVu, Liberation), ImGui's own bitmap font only when there is none. Baked
 + * large (RSX_UI_FONT_PX) and scaled down per frame to the window
 + * (io.FontGlobalScale, rsx_ui_frame), so a 720p window and a 4K screen read
 + * the same and going full screen needs no new atlas. */
@@ -9935,37 +9936,68 @@ index 00000000..9aafee84
 +        "/usr/share/fonts/google-noto/NotoSans-Medium.ttf",
 +        "/usr/share/fonts/noto/NotoSans-Medium.ttf",
 +        "/usr/share/fonts/truetype/noto/NotoSans-Medium.ttf",
++        /* Then whatever common sans the system has (Debian/Ubuntu ship Noto
++         * Sans Regular but not Medium), before ImGui's own: that one is a
++         * 13 px bitmap font and reads pixelated at any other size. */
++        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
++        "/usr/share/fonts/noto/NotoSans-Regular.ttf",
++        "/usr/share/fonts/google-noto/NotoSans-Regular.ttf",
++        "/usr/share/fonts/google-noto-vf/NotoSans[wght].ttf",
++        "/usr/share/fonts/truetype/ubuntu/Ubuntu-M.ttf",
++        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
++        "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
++        "/usr/share/fonts/TTF/DejaVuSans.ttf",
++        "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
++        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
++        "/usr/share/fonts/liberation-sans/LiberationSans-Regular.ttf",
 +    };
 +    ImFontConfig cfg;
 +    cfg.OversampleH = 2;
 +    ImFont* f = nullptr;
-+    if (env && *env) f = io.Fonts->AddFontFromFileTTF(env, px, &cfg, io.Fonts->GetGlyphRangesDefault());
++    const char* body_path = nullptr;    /* the body font's file, for a title fallback */
++    auto readable = [](const char* p) { FILE* t = p && *p ? fopen(p, "rb") : nullptr; if (t) fclose(t); return t != nullptr; };
++    if (readable(env)) { f = io.Fonts->AddFontFromFileTTF(env, px, &cfg, io.Fonts->GetGlyphRangesDefault()); body_path = env; }
 +    for (const char* p : paths) {
 +        if (f) break;
-+        FILE* t = fopen(p, "rb");
-+        if (!t) continue;
-+        fclose(t);
++        if (!readable(p)) continue;
 +        f = io.Fonts->AddFontFromFileTTF(p, px, &cfg, io.Fonts->GetGlyphRangesDefault());
++        body_path = p;
 +    }
 +    if (!f) {
 +        ImFontConfig d; d.SizePixels = px;
 +        io.Fonts->AddFontDefault(&d);
 +    }
-+    /* Titles: Inter Display Black where it exists, three times the size. */
++    /* Titles: PS3RECOMP_UI_TITLE_FONT (a port can pass its game's own), else
++     * Inter Display Black where it exists, else a bold sans, else the body
++     * font's file -- three times the size, rasterised at that size: never the
++     * bitmap font scaled up. */
++    const char* tenv = getenv("PS3RECOMP_UI_TITLE_FONT");
++    if (readable(tenv))
++        U.title_font = io.Fonts->AddFontFromFileTTF(tenv, px * 3.0f, &cfg, io.Fonts->GetGlyphRangesDefault());
 +    static const char* const titles[] = {
 +        "/usr/share/fonts/rsms-inter-fonts/InterDisplay-Black.ttf",
 +        "/usr/share/fonts/rsms-inter-fonts/Inter-Black.ttf",
 +        "/usr/share/fonts/truetype/inter/Inter-Black.ttf",
 +        "/usr/share/fonts/inter/Inter-Black.ttf",
 +        "/usr/share/fonts/TTF/Inter-Black.ttf",
++        "/usr/share/fonts/truetype/noto/NotoSans-Black.ttf",
++        "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
++        "/usr/share/fonts/noto/NotoSans-Bold.ttf",
++        "/usr/share/fonts/google-noto/NotoSans-Bold.ttf",
++        "/usr/share/fonts/truetype/ubuntu/Ubuntu-B.ttf",
++        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
++        "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Bold.ttf",
++        "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
++        "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
++        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
 +    };
 +    for (const char* p : titles) {
-+        FILE* t = fopen(p, "rb");
-+        if (!t) continue;
-+        fclose(t);
++        if (U.title_font) break;
++        if (!readable(p)) continue;
 +        U.title_font = io.Fonts->AddFontFromFileTTF(p, px * 3.0f, &cfg, io.Fonts->GetGlyphRangesDefault());
-+        break;
 +    }
++    if (!U.title_font && body_path)
++        U.title_font = io.Fonts->AddFontFromFileTTF(body_path, px * 3.0f, &cfg, io.Fonts->GetGlyphRangesDefault());
 +}
 +
 +} /* namespace */
@@ -10524,10 +10556,10 @@ index 00000000..c8641315
 +#endif
 diff --git a/libs/video/rsx_ui_metal.mm b/libs/video/rsx_ui_metal.mm
 new file mode 100644
-index 00000000..9d3414db
+index 00000000..e6884877
 --- /dev/null
 +++ b/libs/video/rsx_ui_metal.mm
-@@ -0,0 +1,424 @@
+@@ -0,0 +1,431 @@
 +/*
 + * ps3recomp - a user interface over the game's window (Dear ImGui, Metal).
 + *
@@ -10624,29 +10656,36 @@ index 00000000..9d3414db
 +    ImFontConfig cfg;
 +    cfg.OversampleH = 2;
 +    ImFont* f = nullptr;
-+    if (env && *env) f = io.Fonts->AddFontFromFileTTF(env, px, &cfg, io.Fonts->GetGlyphRangesDefault());
++    const char* body_path = nullptr;    /* the body font's file, for a title fallback */
++    auto readable = [](const char* p) { FILE* t = p && *p ? fopen(p, "rb") : nullptr; if (t) fclose(t); return t != nullptr; };
++    if (readable(env)) { f = io.Fonts->AddFontFromFileTTF(env, px, &cfg, io.Fonts->GetGlyphRangesDefault()); body_path = env; }
 +    for (const char* p : paths) {
 +        if (f) break;
-+        FILE* t = fopen(p, "rb");
-+        if (!t) continue;
-+        fclose(t);
++        if (!readable(p)) continue;
 +        f = io.Fonts->AddFontFromFileTTF(p, px, &cfg, io.Fonts->GetGlyphRangesDefault());
++        body_path = p;
 +    }
 +    if (!f) {
 +        ImFontConfig d; d.SizePixels = px;
 +        io.Fonts->AddFontDefault(&d);
 +    }
++    /* Titles: PS3RECOMP_UI_TITLE_FONT (a port can pass its game's own), else
++     * Arial Black/Bold, else the body font's file -- three times the size,
++     * rasterised at that size: never the bitmap font scaled up (as rsx_ui.cpp). */
++    const char* tenv = getenv("PS3RECOMP_UI_TITLE_FONT");
++    if (readable(tenv))
++        U.title_font = io.Fonts->AddFontFromFileTTF(tenv, px * 3.0f, &cfg, io.Fonts->GetGlyphRangesDefault());
 +    static const char* const titles[] = {
 +        "/System/Library/Fonts/Supplemental/Arial Black.ttf",
 +        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
 +    };
 +    for (const char* p : titles) {
-+        FILE* t = fopen(p, "rb");
-+        if (!t) continue;
-+        fclose(t);
++        if (U.title_font) break;
++        if (!readable(p)) continue;
 +        U.title_font = io.Fonts->AddFontFromFileTTF(p, px * 3.0f, &cfg, io.Fonts->GetGlyphRangesDefault());
-+        break;
 +    }
++    if (!U.title_font && body_path)
++        U.title_font = io.Fonts->AddFontFromFileTTF(body_path, px * 3.0f, &cfg, io.Fonts->GetGlyphRangesDefault());
 +}
 +
 +bool shown() { return U.menu || U.visible || U.modal; }

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Run the port. Logs to work/runs/<timestamp>.log as well as the terminal.
-#   work/run.sh [--offscreen] [extra env as VAR=val ...]
+#   work/run.sh [--offscreen] [--play] [extra env as VAR=val ...]
+#   --play skips the start screen (Play, Settings, Saves, Game files).
 #   TIMEOUT=<secs> to stop after that long (for automated runs).
 #   The game opens a window; --offscreen (or PS3RECOMP_VK_WINDOW=0) renders
 #   offscreen instead. INST runs (below) are offscreen unless
@@ -21,8 +22,9 @@ for kv in "$@"; do
     case "$kv" in
         --offscreen) export PS3RECOMP_VK_WINDOW=0 ;;
         --window)    export PS3RECOMP_VK_WINDOW=1 ;;
+        --play)      export PS3_SKIP_START=1 ;;      # no start screen: boot at once
         *=*)         export "$kv" ;;
-        *) echo "run.sh: unknown argument '$kv' (use --offscreen, --window or VAR=value)" >&2; exit 2 ;;
+        *) echo "run.sh: unknown argument '$kv' (use --offscreen, --window, --play or VAR=value)" >&2; exit 2 ;;
     esac
 done
 INST="${INST:-}"
@@ -35,6 +37,7 @@ if [ -n "$INST" ]; then
     export PS3_HDD0_ROOT="${PS3_HDD0_ROOT:-$I/hdd0}"
     export PAD_FILE="${PAD_FILE:-$I/pad.txt}"
     export PS3_USER_DIR="${PS3_USER_DIR:-$I/user}"   # settings.ini of the in-game menu
+    export PS3_SKIP_START="${PS3_SKIP_START:-1}"      # scripted runs: no start screen to wait on
     export PS3RECOMP_VK_DUMP="${PS3RECOMP_VK_DUMP:-$I/frame.ppm}"
     export PS3RECOMP_VK_DUMP_EVERY="${PS3RECOMP_VK_DUMP_EVERY:-30}"
     [ "${INST_AUDIO:-0}" = 1 ] || export SDL_AUDIODRIVER="${SDL_AUDIODRIVER:-dummy}"
@@ -48,13 +51,11 @@ fi
 BIN="${BIN:-$ROOT/work/port/build/PacificRiftRecomp}"
 mkdir -p "$ROOT/hdd0" "$ROOT/gamedata"
 export PS3_TITLE="${PS3_TITLE:-MotorStorm: Pacific Rift}"
-# dev_flash: ./dev_flash when it is there, else RPCS3's copy (Linux, macOS).
-if [ -z "${PS3_DEV_FLASH:-}" ]; then
-    for d in "$ROOT/dev_flash" "$HOME/.config/rpcs3/dev_flash" "$HOME/Library/Application Support/rpcs3/dev_flash"; do
-        [ -d "$d" ] && { PS3_DEV_FLASH="$d"; break; }
-    done
-fi
-export PS3_DEV_FLASH="${PS3_DEV_FLASH:-$HOME/.config/rpcs3/dev_flash}"
+# dev_flash: $PS3_DEV_FLASH when set (it wins over the start screen's Game
+# files page), else the page's folder, else ./dev_flash when it is there, else
+# RPCS3's copy (Linux, macOS). The game picks (settings.cpp, port_paths_dev_flash);
+# this only hands it ./dev_flash as an absolute path.
+[ -d "$ROOT/dev_flash" ] && export PS3_DEV_FLASH_DEFAULT="$ROOT/dev_flash"
 export PS3_HDD0_ROOT="${PS3_HDD0_ROOT:-$ROOT/hdd0}"
 export PS3_STDIO_UNBUFFERED=1
 export PS3RECOMP_VK_GUEST_PROGRAMS="${PS3RECOMP_VK_GUEST_PROGRAMS:-1}"
