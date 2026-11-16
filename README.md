@@ -243,9 +243,15 @@ in the window).
 
 | Key | Action |
 |---|---|
-| **F1**, or Select+Start held half a second | The settings in game (Escape closes them); the game sees a neutral pad while they are open |
+| **F1**, the pad's **Home** button (PS, Xbox, Guide), or Select+Start held half a second | The settings in game, with **Quit game** (Escape or Circle/B closes them); the game sees a neutral pad while they are open |
 | **F10** | Performance HUD: detailed, compact, off |
 | **F11** or **Alt+Enter** (macOS: **Option+Return**, or the green button) | Full screen and back |
+
+Both the start screen and the menu are made for a controller, with the PS3's
+button icons shown on screen: D-pad or left stick to move, ✕ to select, ○ to
+go back or close, L1/R1 to switch tabs, △ for *Quit game* in game, and the
+PS / Home button to open or close the menu. Every connected pad works, and so
+do the keyboard (arrows, Enter, Escape) and the mouse.
 
 The settings, on the start screen and in game (F1):
 

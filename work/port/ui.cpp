@@ -3,7 +3,8 @@
  *
  *   the start screen     before the game boots, over the disc's PIC1.PNG:
  *                        Play, Settings, Saves, Game files, Help, Quit
- *   F1, or Select+Start held half a second   the in-game menu (Escape closes it)
+ *   F1, Home, or Select+Start held half a second   the in-game menu (Escape or
+ *                        Circle/B closes it; it also quits the game)
  *   F10                  the performance HUD: detailed, compact, off
  *   F11, or Alt+Enter    full screen and back (the backend)
  *
@@ -30,6 +31,8 @@
 #include <SDL2/SDL.h>
 
 #include <atomic>
+#include <cfloat>
+#include <initializer_list>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -57,6 +60,7 @@ extern char** environ;
 extern "C" unsigned ppu_boot_frames_presented(void);       /* main.cpp */
 extern "C" char** port_argv;                               /* main.cpp: as the game was started */
 extern "C" volatile int g_pad_sdl_ready;                   /* cellPad.c: SDL's controller subsystem is up */
+extern "C" void ps3_host_quit(const char* why);           /* cellSysutil.c: the game's own Quit Game */
 /* The backend's side: draws in the last frame, the upscaler's switch and what
  * it is doing. FSR 1 on the Vulkan backend, MetalFX on the Metal one. */
 #ifdef __APPLE__
@@ -102,6 +106,11 @@ const ImU32 k_accent = IM_COL32(255, 158, 51, 255);              /* volcanic ora
 
 void style()
 {
+    /* The selection is always shown, as on a console's menus: by default
+     * ImGui shows it only after a direction is pressed, and until then a pad's
+     * Cross (activate) does nothing -- the first press of a player who wants
+     * the highlighted PLAY was swallowed. */
+    ImGui::GetIO().ConfigNavCursorVisibleAlways = true;
     ImGuiStyle& s = ImGui::GetStyle();
     ImGui::StyleColorsDark(&s);
     s.WindowRounding = 10.0f; s.FrameRounding = 6.0f; s.TabRounding = 6.0f;
@@ -165,6 +174,131 @@ void heading(const char* t)
     ImGui::PopStyleColor();
     ImGui::Separator();
 }
+
+/* ---- PS3 pad icons --------------------------------------------------------
+ * Drawn with ImGui's shapes, not a font, so they stay sharp at any size: the
+ * four face buttons in the PlayStation colours on a dark disc, L1/R1 and
+ * Start/Select as labelled pills, the PS button, the D-pad. */
+enum PadIcon { ICON_CROSS, ICON_CIRCLE, ICON_SQUARE, ICON_TRIANGLE, ICON_L1, ICON_R1, ICON_L1R1,
+               ICON_START, ICON_SELECT, ICON_PS, ICON_DPAD };
+
+/* Draws the icon with its top-left at `p`, `h` tall; returns its width. */
+float icon_draw(ImDrawList* dl, ImVec2 p, float h, PadIcon k)
+{
+    const ImU32 disc = IM_COL32(28, 26, 24, 235), rim = IM_COL32(150, 140, 128, 200);
+    const ImU32 white = IM_COL32(240, 236, 230, 255);
+    const float r = h * 0.5f, th = h * 0.09f > 1.5f ? h * 0.09f : 1.5f;
+    const ImVec2 c(p.x + r, p.y + r);
+    auto face = [&](void) { dl->AddCircleFilled(c, r, disc, 32); dl->AddCircle(c, r - 0.5f, rim, 32, 1.2f); };
+    auto pill = [&](float w, const char* label) {
+        dl->AddRectFilled(p, ImVec2(p.x + w, p.y + h), disc, h * 0.3f);
+        dl->AddRect(p, ImVec2(p.x + w, p.y + h), rim, h * 0.3f, 0, 1.2f);
+        if (label) {
+            ImFont* f = ImGui::GetFont();
+            const float fsz = h * 0.58f;
+            const ImVec2 ts = f->CalcTextSizeA(fsz, FLT_MAX, 0.0f, label);
+            dl->AddText(f, fsz, ImVec2(p.x + (w - ts.x) * 0.5f, p.y + (h - ts.y) * 0.5f), white, label);
+        }
+        return w;
+    };
+    switch (k) {
+    case ICON_CROSS: {
+        face();
+        const float a = r * 0.42f;
+        const ImU32 col = IM_COL32(124, 178, 232, 255);
+        dl->AddLine(ImVec2(c.x - a, c.y - a), ImVec2(c.x + a, c.y + a), col, th);
+        dl->AddLine(ImVec2(c.x - a, c.y + a), ImVec2(c.x + a, c.y - a), col, th);
+        return h; }
+    case ICON_CIRCLE:
+        face();
+        dl->AddCircle(c, r * 0.46f, IM_COL32(255, 102, 102, 255), 24, th);
+        return h;
+    case ICON_SQUARE: {
+        face();
+        const float a = r * 0.40f;
+        dl->AddRect(ImVec2(c.x - a, c.y - a), ImVec2(c.x + a, c.y + a), IM_COL32(255, 105, 248, 255), 0.0f, 0, th);
+        return h; }
+    case ICON_TRIANGLE: {
+        face();
+        const float a = r * 0.50f;
+        dl->AddTriangle(ImVec2(c.x, c.y - a), ImVec2(c.x + a * 0.92f, c.y + a * 0.62f),
+                        ImVec2(c.x - a * 0.92f, c.y + a * 0.62f), IM_COL32(64, 226, 160, 255), th);
+        return h; }
+    case ICON_L1: return pill(h * 1.45f, "L1");
+    case ICON_R1: return pill(h * 1.45f, "R1");
+    case ICON_L1R1: {
+        const float w = pill(h * 1.45f, "L1");
+        const ImVec2 q = p;
+        p.x += w + h * 0.15f;
+        const float w2 = pill(h * 1.45f, "R1");
+        p = q;
+        return w + h * 0.15f + w2; }
+    case ICON_START: {        /* the PS3's Start: a right-pointing triangle */
+        const float w = pill(h * 1.6f, nullptr);
+        const float a = h * 0.24f, cx = p.x + w * 0.5f;
+        dl->AddTriangleFilled(ImVec2(cx - a * 0.8f, c.y - a), ImVec2(cx + a, c.y), ImVec2(cx - a * 0.8f, c.y + a), white);
+        return w; }
+    case ICON_SELECT: {       /* the PS3's Select: a small bar */
+        const float w = pill(h * 1.6f, nullptr);
+        const float cx = p.x + w * 0.5f;
+        dl->AddRectFilled(ImVec2(cx - h * 0.26f, c.y - h * 0.09f), ImVec2(cx + h * 0.26f, c.y + h * 0.09f), white, h * 0.05f);
+        return w; }
+    case ICON_PS: {
+        face();
+        ImFont* f = ImGui::GetFont();
+        const float fsz = h * 0.5f;
+        const ImVec2 ts = f->CalcTextSizeA(fsz, FLT_MAX, 0.0f, "PS");
+        dl->AddText(f, fsz, ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f), white, "PS");
+        return h; }
+    case ICON_DPAD: {
+        const float a = h * 0.18f, b = h * 0.48f;
+        const ImU32 col = IM_COL32(205, 198, 188, 255);
+        dl->AddRectFilled(ImVec2(c.x - a, c.y - b), ImVec2(c.x + a, c.y + b), col, h * 0.06f);
+        dl->AddRectFilled(ImVec2(c.x - b, c.y - a), ImVec2(c.x + b, c.y + a), col, h * 0.06f);
+        dl->AddCircleFilled(c, a * 0.55f, disc, 12);
+        return h; }
+    }
+    return h;
+}
+
+/* An icon in the layout, on the current line, the height of the text. */
+void icon_inline(PadIcon k)
+{
+    const float h = ImGui::GetFrameHeight() * 0.86f;
+    const ImVec2 p = ImGui::GetCursorScreenPos();
+    const float y = p.y + (ImGui::GetFrameHeight() - h) * 0.5f;
+    const float w = icon_draw(ImGui::GetWindowDrawList(), ImVec2(p.x, y), h, k);
+    ImGui::Dummy(ImVec2(w, ImGui::GetFrameHeight()));
+}
+
+/* A row of "icon  label" hints, drawn at `p` (screen space) on `dl`. */
+struct IconHint { PadIcon icon; const char* label; };
+void hint_bar(ImDrawList* dl, ImVec2 p, float h, std::initializer_list<IconHint> items)
+{
+    ImFont* f = ImGui::GetFont();
+    const float fsz = ImGui::GetFontSize();
+    for (const IconHint& it : items) {
+        p.x += icon_draw(dl, p, h, it.icon) + h * 0.3f;
+        const ImVec2 ts = f->CalcTextSizeA(fsz, FLT_MAX, 0.0f, it.label);
+        dl->AddText(f, fsz, ImVec2(p.x, p.y + (h - ts.y) * 0.5f), IM_COL32(225, 216, 204, 225), it.label);
+        p.x += ts.x + h * 0.9f;
+    }
+}
+
+/* L1/R1 switch the tabs of a tab bar. `n` tabs; call tab_flags(i) for tab i
+ * and tab_seen(i) when it is the selected one. */
+struct TabNav {
+    int cur = 0, want = -1;
+    void begin(int n)
+    {
+        want = -1;
+        if (ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId)) return;
+        if (ImGui::IsKeyPressed(ImGuiKey_GamepadL1, false)) want = (cur + n - 1) % n;
+        if (ImGui::IsKeyPressed(ImGuiKey_GamepadR1, false)) want = (cur + 1) % n;
+    }
+    ImGuiTabItemFlags flags(int i) const { return want == i ? ImGuiTabItemFlags_SetSelected : 0; }
+    void seen(int i) { cur = i; }
+};
 
 void pin_begin(unsigned bit)
 {
@@ -382,7 +516,7 @@ void page_gameplay(port_settings& s)
     pin_begin(PORT_PIN_SKIP_START);
     if (ImGui::Checkbox("Skip the start screen, boot straight into the game", &sk)) { s.skip_start = sk; save(); }
     pin_end(PORT_PIN_SKIP_START);
-    hint("F1 (or Select+Start held) still opens these settings in game. To get the start screen "
+    hint("F1 (or Home on a pad) still opens these settings in game. To get the start screen "
          "back, untick this there.");
     restart_button();
 }
@@ -438,16 +572,31 @@ void page_controller()
     }
 }
 
+/* One row of the pad's controls: the icon, then what it does. */
+void pad_row(PadIcon k, const char* what)
+{
+    icon_inline(k);
+    ImGui::SameLine(ImGui::GetFontSize() * 4.2f);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(what);
+}
+
 void page_keys()
 {
-    heading("Port keys");
-    ImGui::TextUnformatted("F1          the settings (or Select+Start held on a pad)");
+    heading("Controller (in the menus)");
+    pad_row(ICON_PS, "Open or close the menu in game (or Select+Start held)");
+    pad_row(ICON_DPAD, "Move (the left stick too)");
+    pad_row(ICON_CROSS, "Select, open a list, tick a box");
+    pad_row(ICON_CIRCLE, "Back; close a list, a dialog or the menu");
+    pad_row(ICON_L1R1, "Previous / next tab");
+    pad_row(ICON_TRIANGLE, "Quit the game (in game)");
+    hint("In a race the pad is the game's own; the menu gives it a neutral pad while it is open.");
+    heading("Keyboard");
+    ImGui::TextUnformatted("F1          the menu in game");
     ImGui::TextUnformatted("F10         the performance HUD: detailed, compact, off");
     ImGui::TextUnformatted("F11         full screen and back (" PORT_FULLSCREEN_KEYS ")");
-    ImGui::TextUnformatted("Escape      close a menu; with none open, quit the game");
-    heading("Menus");
-    hint("Mouse, keyboard (arrows, Enter, Escape) or a pad (D-pad or stick, Cross/A selects, "
-         "Circle/B goes back) all work in the start screen and the settings.");
+    ImGui::TextUnformatted("Arrows, Enter, Escape   move, select, back in the menus");
+    ImGui::TextUnformatted("Escape      with no menu open, quit the game");
 }
 
 /* ---- the in-game menu ---------------------------------------------------- */
@@ -468,27 +617,76 @@ void draw_menu()
     ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Always,
                             ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(ImVec2(std::min(fs * 40.0f, io.DisplaySize.x * 0.94f),
-                                    std::min(fs * 32.0f, io.DisplaySize.y * 0.92f)), ImGuiCond_Always);
+                                    std::min(fs * 33.0f, io.DisplaySize.y * 0.94f)), ImGuiCond_Always);
     ImGui::Begin("MotorStorm: Pacific Rift  ·  Settings", nullptr,
                  ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
                  ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar);
     if (ImGui::BeginTabBar("pages")) {
         /* Each tab's body scrolls on its own; the bar and the footer stay. */
         ImGui::PushID("ingame");
-        if (ImGui::BeginTabItem("Display")) { begin_body(fs * 2.8f); page_display(s); ImGui::EndChild(); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem("Gameplay")) { begin_body(fs * 2.8f); page_gameplay(s); ImGui::EndChild(); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem("Controller")) { begin_body(fs * 2.8f); page_controller(); ImGui::EndChild(); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem("Saves")) { begin_body(fs * 2.8f); pui::page_saves(s); ImGui::EndChild(); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem("Game files")) { begin_body(fs * 2.8f); pui::page_game(s); ImGui::EndChild(); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem("Keys")) { begin_body(fs * 2.8f); page_keys(); ImGui::EndChild(); ImGui::EndTabItem(); }
+        static TabNav tn;
+        tn.begin(6);
+        const float body = fs * 4.6f;
+        if (ImGui::BeginTabItem("Display", nullptr, tn.flags(0))) { tn.seen(0); begin_body(body); page_display(s); ImGui::EndChild(); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem("Gameplay", nullptr, tn.flags(1))) { tn.seen(1); begin_body(body); page_gameplay(s); ImGui::EndChild(); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem("Controller", nullptr, tn.flags(2))) { tn.seen(2); begin_body(body); page_controller(); ImGui::EndChild(); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem("Saves", nullptr, tn.flags(3))) { tn.seen(3); begin_body(body); pui::page_saves(s); ImGui::EndChild(); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem("Game files", nullptr, tn.flags(4))) { tn.seen(4); begin_body(body); pui::page_game(s); ImGui::EndChild(); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem("Keys", nullptr, tn.flags(5))) { tn.seen(5); begin_body(body); page_keys(); ImGui::EndChild(); ImGui::EndTabItem(); }
         ImGui::PopID();
         ImGui::EndTabBar();
     }
     ImGui::Separator();
-    hint("Saved at once to user/settings.ini.");
+    const bool no_popup = !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
+    if (ImGui::Button("Quit game") || (no_popup && ImGui::IsKeyPressed(ImGuiKey_GamepadFaceUp, false)))
+        ImGui::OpenPopup("Quit the game?");
+    ImGui::SameLine(0, fs * 0.3f);
+    icon_inline(ICON_TRIANGLE);
     ImGui::SameLine();
-    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - fs * 7.5f);
-    if (ImGui::Button("Close  (F1)")) rsx_ui_set_menu_open(0);
+    hint("Settings are saved at once.");
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - fs * 7.2f);
+    if (ImGui::Button("Close")) rsx_ui_set_menu_open(0);
+    ImGui::SameLine(0, fs * 0.3f);
+    icon_inline(ICON_CIRCLE);
+    /* The pad's controls, under the buttons. */
+    { const float h = ImGui::GetFrameHeight() * 0.8f;
+      const ImVec2 p = ImGui::GetCursorScreenPos();
+      hint_bar(ImGui::GetWindowDrawList(), p, h,
+               { { ICON_DPAD, "Move" }, { ICON_CROSS, "Select" }, { ICON_CIRCLE, "Close" },
+                 { ICON_L1R1, "Tabs" }, { ICON_PS, "Menu" } });
+      ImGui::Dummy(ImVec2(1, h)); }
+    /* Quit as the PS3's own Quit Game does: the game is asked to exit and
+     * gets a moment to finish, never in the middle of writing a save
+     * (ps3_host_quit, cellSysutil.c). */
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Always,
+                            ImVec2(0.5f, 0.5f));
+    if (ImGui::BeginPopupModal("Quit the game?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        static bool quitting = false;
+        if (!quitting) {
+            ImGui::TextUnformatted("Race progress since the game last saved is lost.");
+            if (ImGui::Button("Quit", ImVec2(fs * 6.0f, 0))) {
+                quitting = true;
+                ps3_host_quit("Quit game in the menu");
+            }
+            ImGui::SameLine(0, fs * 1.2f);
+            const bool cancel = ImGui::Button("Cancel", ImVec2(fs * 6.0f, 0));
+            ImGui::SetItemDefaultFocus();   /* Cancel: a stray Cross does not quit */
+            if (cancel || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false))
+                ImGui::CloseCurrentPopup();
+            ImGui::SameLine(0, fs * 0.3f);
+            icon_inline(ICON_CIRCLE);
+        } else {
+            ImGui::TextUnformatted("Quitting...");
+        }
+        ImGui::EndPopup();
+    }
+    /* Circle/B closes the menu from a pad, as Escape does from the keyboard,
+     * unless it is closing a list or a dialog first. */
+    else if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false) && !ImGui::IsAnyItemActive() &&
+             !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId)) {
+        rsx_ui_set_menu_open(0);
+    }
     ImGui::End();
 }
 
@@ -662,9 +860,11 @@ void draw_start()
         switch (g_page) {
         case PAGE_SETTINGS:
             if (ImGui::BeginTabBar("pages")) {
-                if (ImGui::BeginTabItem("Display")) { page_display(s); ImGui::EndTabItem(); }
-                if (ImGui::BeginTabItem("Gameplay")) { page_gameplay(s); ImGui::EndTabItem(); }
-                if (ImGui::BeginTabItem("Controller")) { page_controller(); ImGui::EndTabItem(); }
+                static TabNav tn;
+                tn.begin(3);
+                if (ImGui::BeginTabItem("Display", nullptr, tn.flags(0))) { tn.seen(0); page_display(s); ImGui::EndTabItem(); }
+                if (ImGui::BeginTabItem("Gameplay", nullptr, tn.flags(1))) { tn.seen(1); page_gameplay(s); ImGui::EndTabItem(); }
+                if (ImGui::BeginTabItem("Controller", nullptr, tn.flags(2))) { tn.seen(2); page_controller(); ImGui::EndTabItem(); }
                 ImGui::EndTabBar();
             }
             break;
@@ -677,17 +877,25 @@ void draw_start()
         ImGui::Separator();
         if (g_page_focus) { ImGui::SetKeyboardFocusHere(); g_page_focus = false; }
         if (ImGui::Button("BACK", ImVec2(fs * 7.0f, fs * 1.8f))) go_page(PAGE_MAIN);
+        ImGui::SameLine(0, fs * 0.3f);
+        icon_inline(ICON_CIRCLE);
         ImGui::SameLine();
         const std::string note = restart_note(s);
-        hint(note.empty() ? "Saved at once. F1 (or Select+Start held) opens the settings in game."
+        hint(note.empty() ? "Saved at once. F1 (or Home on a pad) opens the settings in game."
                           : ("Play starts the game with the new " + note + ".").c_str());
     }
     ImGui::End();
 
     /* the controls, bottom left */
-    const char* keys = g_page == PAGE_MAIN ? "Cross/A / Enter  select"
-                                           : "Cross/A / Enter  select      Circle/B / Esc  back";
-    bg->AddText(ImVec2(tp.x, d.y - fs * 2.0f), IM_COL32(220, 210, 196, 200), keys);
+    { const float h = fs * 1.35f;
+      const ImVec2 p(tp.x, d.y - fs * 2.25f);
+      if (g_page == PAGE_MAIN)
+          hint_bar(bg, p, h, { { ICON_DPAD, "Move" }, { ICON_CROSS, "Select" } });
+      else if (g_page == PAGE_SETTINGS)
+          hint_bar(bg, p, h, { { ICON_DPAD, "Move" }, { ICON_CROSS, "Select" }, { ICON_CIRCLE, "Back" },
+                               { ICON_L1R1, "Tabs" } });
+      else
+          hint_bar(bg, p, h, { { ICON_DPAD, "Move" }, { ICON_CROSS, "Select" }, { ICON_CIRCLE, "Back" } }); }
     /* PS3_UI_AUTOPLAY_MS=<ms>: press Play by itself that long after the start
      * screen first draws -- a scripted run through the start screen without a
      * hand on the pad (from the Apocalypse port). */

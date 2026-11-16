@@ -9570,10 +9570,10 @@ index 4aa4a176..54333fcd 100644
      }
 diff --git a/libs/video/rsx_ui.cpp b/libs/video/rsx_ui.cpp
 new file mode 100644
-index 00000000..c1784628
+index 00000000..017f0a06
 --- /dev/null
 +++ b/libs/video/rsx_ui.cpp
-@@ -0,0 +1,832 @@
+@@ -0,0 +1,846 @@
 +/*
 + * ps3recomp - a user interface over the game's window (Dear ImGui, Vulkan).
 + * See rsx_ui.h for the threads, rsx_ui_vk.h for the backend's side.
@@ -10168,13 +10168,23 @@ index 00000000..c1784628
 +    /* Under SDL's joystick lock: cellPad opens and polls the same pads from
 +     * the game's threads, and the device list behind SDL_NumJoysticks is
 +     * rebuilt on each call (two threads at once corrupted the heap). */
++    /* The Home button (PS, Xbox, Guide) opens or closes it at once. */
 +    if (!U.modal) { SDL_GameController* gc = nullptr;
 +      SDL_LockJoysticks();
-+      for (int i = 0; i < SDL_NumJoysticks() && !gc; i++)
-+          if (SDL_IsGameController(i)) gc = SDL_GameControllerFromInstanceID(SDL_JoystickGetDeviceInstanceID(i));
-+      const bool both = gc && SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_BACK) &&
-+                        SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_START);
++      /* Any connected pad, not only the first SDL lists. */
++      bool both = false, home = false;
++      for (int i = 0; i < SDL_NumJoysticks(); i++) {
++          if (!SDL_IsGameController(i)) continue;
++          gc = SDL_GameControllerFromInstanceID(SDL_JoystickGetDeviceInstanceID(i));
++          if (!gc) continue;
++          both = both || (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_BACK) &&
++                          SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_START));
++          home = home || SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_GUIDE);
++      }
 +      SDL_UnlockJoysticks();
++      static bool home_was = false;
++      if (home && !home_was) rsx_ui_set_menu_open(!U.menu);
++      home_was = home;
 +      if (both) {
 +          const double before = U.hold;
 +          U.hold += U.dt;
@@ -10233,6 +10243,10 @@ index 00000000..c1784628
 +        ImGui::DestroyContext();
 +        return -1;
 +    }
++    /* Every connected pad moves through the menus, not only the first SDL
++     * lists: with two (or a virtual Steam Input pad listed first) the one in
++     * the player's hands was ignored. */
++    ImGui_ImplSDL2_SetGamepadMode(ImGui_ImplSDL2_GamepadMode_AutoAll);
 +    const VkDescriptorPoolSize ps = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 16 };
 +    VkDescriptorPoolCreateInfo pci = {};
 +    pci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -10252,7 +10266,7 @@ index 00000000..c1784628
 +          const char* a = getenv("PS3RECOMP_UI_SHOT_AFTER");
 +          if (a && *a) U.shot.after = atol(a);
 +      } }
-+    fprintf(stderr, "[ui] started: F1 (or Select+Start held) opens the menu, F10 the FPS counter\n");
++    fprintf(stderr, "[ui] started: F1 (or Home, or Select+Start held) opens the menu, F10 the FPS counter\n");
 +    return 0;
 +}
 +
@@ -10556,10 +10570,10 @@ index 00000000..c8641315
 +#endif
 diff --git a/libs/video/rsx_ui_metal.mm b/libs/video/rsx_ui_metal.mm
 new file mode 100644
-index 00000000..e6884877
+index 00000000..8b0025f5
 --- /dev/null
 +++ b/libs/video/rsx_ui_metal.mm
-@@ -0,0 +1,431 @@
+@@ -0,0 +1,441 @@
 +/*
 + * ps3recomp - a user interface over the game's window (Dear ImGui, Metal).
 + *
@@ -10844,7 +10858,7 @@ index 00000000..e6884877
 +          const char* a = getenv("PS3RECOMP_UI_SHOT_AFTER");
 +          if (a && *a) U.shot.after = atol(a);
 +      } }
-+    fprintf(stderr, "[ui] started: F1 (or Select+Start held) opens the menu, F10 the FPS counter\n");
++    fprintf(stderr, "[ui] started: F1 (or Home, or Select+Start held) opens the menu, F10 the FPS counter\n");
 +    return 0;
 +}
 +
@@ -10926,11 +10940,21 @@ index 00000000..e6884877
 +    if (!U.modal && g_pad_sdl_ready) {
 +        SDL_GameController* gc = nullptr;
 +        SDL_LockJoysticks();
-+        for (int i = 0; i < SDL_NumJoysticks() && !gc; i++)
-+            if (SDL_IsGameController(i)) gc = SDL_GameControllerFromInstanceID(SDL_JoystickGetDeviceInstanceID(i));
-+        const bool both = gc && SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_BACK) &&
-+                          SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_START);
++        /* Any connected pad, not only the first SDL lists. The Home button
++         * (PS, Xbox, Guide) opens or closes it at once (as rsx_ui.cpp). */
++        bool both = false, home = false;
++        for (int i = 0; i < SDL_NumJoysticks(); i++) {
++            if (!SDL_IsGameController(i)) continue;
++            gc = SDL_GameControllerFromInstanceID(SDL_JoystickGetDeviceInstanceID(i));
++            if (!gc) continue;
++            both = both || (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_BACK) &&
++                            SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_START));
++            home = home || SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_GUIDE);
++        }
 +        SDL_UnlockJoysticks();
++        static bool home_was = false;
++        if (home && !home_was) rsx_ui_set_menu_open(!U.menu);
++        home_was = home;
 +        if (both) {
 +            const double before = U.hold;
 +            U.hold += U.dt;
