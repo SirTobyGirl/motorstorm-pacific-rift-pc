@@ -4,7 +4,11 @@ building and starting the port. It drives the repository's own scripts
 (doctor.sh, prepare_disc.sh, setup.sh, lift.sh, build.sh, work/run.sh), so
 they stay the source of truth; this only runs them and shows the result.
 
-    scripts/setup_gui.py [--port N] [--no-browser]
+    scripts/setup_gui.py [--root DIR] [--port N] [--no-browser]
+
+Also built as a single executable (scripts/build_gui_exe.sh): it carries the
+repository's scripts and sources and unpacks them into a workspace folder
+(default ~/MotorStormPR) on first run, so users need no checkout.
 
 Standard library only (no tkinter or GTK needed). It listens on 127.0.0.1
 with a random access token and opens your browser. Linux and macOS.
@@ -15,19 +19,78 @@ import argparse, json, os, re, secrets, shutil, signal, subprocess, sys, threadi
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FROZEN = bool(getattr(sys, "frozen", False))      # running as the PyInstaller executable
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # replaced by set_root()
 TOKEN = secrets.token_urlsafe(24)
 HOME = os.path.expanduser("~")
-CONFIG_PATH = os.path.join(ROOT, "user", "setup_gui.json")
+CONFIG_PATH = ""
 # Variables a shell may export that make CMake pick up a foreign toolchain.
 LEAKY = ["CC", "CXX", "AR", "RANLIB", "LDFLAGS", "CMAKE_SYSROOT", "CMAKE_TOOLCHAIN_FILE", "LD_LIBRARY_PATH"]
 
 cfg = {"prefix": "", "clean_env": True, "jobs": "", "flash": ""}
-try:
-    with open(CONFIG_PATH) as f:
-        cfg.update(json.load(f))
-except (OSError, ValueError):
-    pass
+
+
+def set_root(root):
+    """Point everything at the workspace and load its saved settings."""
+    global ROOT, CONFIG_PATH
+    ROOT = os.path.abspath(root)
+    CONFIG_PATH = os.path.join(ROOT, "user", "setup_gui.json")
+    try:
+        with open(CONFIG_PATH) as f:
+            cfg.update(json.load(f))
+    except (OSError, ValueError):
+        pass
+
+
+def bundle_dir():
+    """The repository files carried inside the executable ('' when not frozen)."""
+    base = getattr(sys, "_MEIPASS", "")
+    d = os.path.join(base, "payload") if base else ""
+    return d if d and os.path.isdir(d) else ""
+
+
+def ensure_workspace(root):
+    """Unpack the bundled scripts and sources into root. Only the bundled
+    (tracked) files are written, never the game, saves, builds or settings.
+    A git checkout is left alone, and so is a workspace already at this version."""
+    src = bundle_dir()
+    if not src:
+        return
+    try:
+        with open(os.path.join(src, ".bundle_version")) as f:
+            ver = f.read().strip()
+    except OSError:
+        ver = "unknown"
+    marker = os.path.join(root, ".bundle_version")
+    try:
+        with open(marker) as f:
+            have = f.read().strip()
+    except OSError:
+        have = ""
+    if have == ver or os.path.isdir(os.path.join(root, ".git")):
+        return
+    print("Unpacking the port's scripts and sources into %s ..." % root, flush=True)
+    for dp, _, fns in os.walk(src):
+        rel = os.path.relpath(dp, src)
+        os.makedirs(os.path.join(root, rel), exist_ok=True)
+        for fn in fns:
+            if fn == ".bundle_version":
+                continue
+            shutil.copy2(os.path.join(dp, fn), os.path.join(root, rel, fn))
+    with open(marker, "w") as f:
+        f.write(ver + "\n")
+
+
+def pick_root(arg):
+    if arg:
+        return arg
+    if os.environ.get("MSPR_HOME"):
+        return os.environ["MSPR_HOME"]
+    if not FROZEN:
+        return ROOT
+    if os.path.isfile(os.path.join(os.getcwd(), "scripts", "doctor.sh")):
+        return os.getcwd()
+    return os.path.join(HOME, "MotorStormPR")
 
 
 def save_cfg():
@@ -41,6 +104,15 @@ def save_cfg():
 
 def make_env():
     env = dict(os.environ)
+    if FROZEN:
+        # PyInstaller points the library path at its own bundle; the build
+        # tools we start must see the user's, not ours.
+        for var in ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"):
+            orig = env.pop(var + "_ORIG", None)
+            if orig is not None:
+                env[var] = orig
+            else:
+                env.pop(var, None)
     if cfg["clean_env"]:
         for v in LEAKY:
             env.pop(v, None)
@@ -448,11 +520,18 @@ refresh();poll();setInterval(()=>{if(!running)refresh()},20000);
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--root", help="workspace folder (default: this checkout, or ~/MotorStormPR for the executable)")
     ap.add_argument("--port", type=int, default=0)
     ap.add_argument("--no-browser", action="store_true")
     a = ap.parse_args()
     if sys.platform not in ("linux", "darwin"):
         sys.exit("setup_gui: Linux and macOS only (the scripts it drives are bash)")
+    root = pick_root(a.root)
+    ensure_workspace(root)
+    if not os.path.isfile(os.path.join(root, "scripts", "doctor.sh")):
+        sys.exit("setup_gui: %s is not a workspace (no scripts/doctor.sh)" % root)
+    set_root(root)
+    print("Workspace: %s" % ROOT, flush=True)
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), H)
     url = "http://127.0.0.1:%d/?t=%s" % (srv.server_address[1], TOKEN)
     print("Setup wizard: %s\n(opens in your browser; Ctrl+C here to quit)" % url, flush=True)

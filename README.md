@@ -153,6 +153,19 @@ token, and installs no system packages: it tells you what is missing. Linux
 and macOS. Its build settings (a local libraries folder, the clean build
 environment, the job count) are kept in `user/setup_gui.json`.
 
+**As one executable.** `scripts/build_gui_exe.sh` packs the wizard with
+PyInstaller into a single file, `dist/MotorStormPR-Setup`, that needs no
+Python and no checkout: double-click it (or run it in a terminal) and it opens
+the wizard. It carries this repository's scripts and sources (tracked files
+only; nothing of the game) and unpacks them on first run into `~/MotorStormPR`
+(`--root DIR` or `MSPR_HOME` to choose another folder; a git checkout is left
+alone). The game, the firmware, the lift and the build then live in that
+folder. It still cannot install system packages (compiler, CMake, SDL2 ...):
+the wizard lists what is missing. The binary needs a glibc as new as the one
+it was built on, so build it on the oldest system you want to support. A
+PyInstaller build is made on the platform it is for; building it on a Mac
+works the same way but is untested.
+
 ### 1. Get the code
 
 ```sh
