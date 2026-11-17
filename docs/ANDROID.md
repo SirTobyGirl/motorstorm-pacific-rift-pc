@@ -41,7 +41,8 @@ stays alive.
 |---|---|
 | Memory | 446 MB resident, 448 MB peak, 63 threads |
 | CPU | 1.6 of 8 cores busy on average; the busiest thread is at about 50% of one core; 546% of 800% of the whole phone idle |
-| Frame rate | **3.9 fps**, a steady 240 to 285 ms per frame |
+| Frame rate (before the shader fix) | **3.9 fps**, a steady 240 to 285 ms per frame |
+| Frame rate (after the shader fix) | **15.7 fps**, median 33.8 ms, 3.4 cores busy |
 | Heat | the hottest chip zone reached 95 C; battery 22 C |
 | GPU | the load counter read 0% throughout (possibly not meaningful) |
 
@@ -53,7 +54,79 @@ yet tested: the slow intro video decode on one thread (the notes say it is only
 the phone's big and little cores, and slow scalar fall-backs in the arm64 SPU
 helpers. A profile (`simpleperf`) is the next step.
 
+## The actual cause: the translated shaders (found and fixed)
+
+The game spent about 250 to 290 ms of every frame waiting for the **GPU**, for a
+screen of only 22 draws. The fix takes the intro and title screens from about **4
+to about 16 fps** (median frame 33.8 ms, the game's own 30 fps pacing) and gets
+the game 82% further through its startup in the same time.
+
+How it was found, in order (each step ruled something out):
+
+1. The game's frame tracer (`PS3_FTRACE`, report: `ps3recomp/tools/ftrace_report.py`)
+   showed every PPU thread blocked for the whole frame and the render thread in
+   `gpu wait (present)` for **278 of 290 ms**; the `queue present` call itself took 0.2 ms.
+2. The backend profiler (`VK_BE_PROFILE=1`): binding targets, pipelines, constants
+   and textures cost about 0 ms; `present` was 99% of the wall time.
+3. `android/tools/vkprobe.c` (a tiny Vulkan program run through `adb shell`)
+   measured the phone's queue: empty submit 0.43 ms, a 720p clear or blit 0.46 ms,
+   a 16 MB copy 1.1 ms. The driver and queue are fast; the game's work is what is slow.
+4. Running with no window (no swapchain, compositor or rotation) was no faster
+   (3.3 fps), so the display path is not the cause.
+5. `PS3RECOMP_VK_GUEST_PROGRAMS=0` (the plain built-in shaders instead of the
+   game's translated ones) took it from 4 to **11 fps**. Turning off GPU vertex
+   fetch changed nothing.
+6. A shader dump (`RSX_ENGINE_SHADER_DUMP`) showed every translated pixel shader
+   begins with `float4 r[48]; float4 h[48];` and a loop zeroing all 96 registers,
+   while a program uses about **1.2 `r` and 3.2 `h`** of them on average. Desktop
+   compilers drop what is unused; the Adreno's compiler keeps per-pixel arrays in
+   slow scratch memory (1.5 KB zeroed per pixel, about 1.4 GB of traffic for one
+   full-screen draw at 1280x720).
+
+The fix (`ps3recomp/libs/video/rsx_fp_decompiler.c`, `fp_scalarize_registers`):
+every access in the body is to a constant index, so each *used* register becomes a
+plain variable (`r[3]` to `_r3`) and only those are declared. If anything indexes
+the arrays by anything else, the shader is left as it was.
+`PS3RECOMP_FP_ARRAYS=1` restores the old arrays.
+
+**Checked:** all 17 pixel shaders from the intro compile with glslang before and
+after. On Linux (same binary, new against old) the first 83 captured frames
+(logos and start-up screens) are **byte-identical**; the intro video's frames
+differ, but the old code differs from itself in the same way (135 of 226 identical
+old against old, against 125 of 224 new against old, first difference at about the
+same frame), so that is timing noise. **Not checked:** rendering inside a race, on
+Linux or on the phone. This change applies to every platform's shader output, so
+a race should be looked at before relying on it.
+
+### Things tried that changed nothing
+
+Run-to-run noise on the phone is about 15%, so only larger effects count.
+
+| Change | Result |
+|---|---|
+| spin-waits off (`PS3_USLEEP_SPIN_MAX=0`) | no change |
+| spin-waits up to 300 us | no change (more CPU, same fps) |
+| clock poll 4 ms (`PS3RECOMP_CLOCK_POLL_US=4000`) | within noise |
+| audio off (`SDL_AUDIODRIVER=dummy`) | no change |
+| vblank semaphore timeout 250 / 50 ms / off | no change |
+| SPU sources at `-O3`, `-march=armv8.2-a+fp16+dotprod`, `-mtune=cortex-a715`, no stack protector | no change |
+| CPU vertex fetch (`PS3RECOMP_ENG_GPUFETCH=0`) | no change |
+
+### Heat
+
+With the game running, the hottest chip zone reaches 94 to 96 C within about 75
+seconds (it was 64 C with no window). Every test here was therefore kept to about
+75 seconds with a cool-down below 60 C before the next. Sustained play at those
+temperatures will make the phone throttle; check it before a long session.
+
 ## Profile (simpleperf, 12 s and 8 s samples on the Thor)
+
+> **These profiles came first and, read alone, pointed the wrong way.** The SPU
+> work below is real CPU work but it was not what set the frame rate: the frame was
+> waiting on the GPU (section above). The "busy-polling thread" is almost certainly
+> the game's main thread in its `usleep(1)` spin-wait while it waited for that GPU
+> work. The candidate fixes listed at the end of this section turned out not to be
+> the first thing to do. They may matter once the GPU side is fixed.
 
 `scripts/android_profile.sh` records and symbolizes this. Two phases:
 

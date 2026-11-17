@@ -7405,7 +7405,7 @@ index a25ecc29..84420dad 100644
  
  /* --- test hooks ---------------------------------------------------------- */
 diff --git a/libs/video/rsx_fp_decompiler.c b/libs/video/rsx_fp_decompiler.c
-index cfb9685b..f766bf07 100644
+index cfb9685b..dbd41c8c 100644
 --- a/libs/video/rsx_fp_decompiler.c
 +++ b/libs/video/rsx_fp_decompiler.c
 @@ -44,6 +44,7 @@
@@ -7566,7 +7566,72 @@ index cfb9685b..f766bf07 100644
  /* Dest write-mask letters from OPDEST bits 9..12 (X..W). */
  static void dest_mask(u32 op0, char* m)
  {
-@@ -666,6 +782,8 @@ static int rsx_fp_decompile_internal(
+@@ -618,6 +734,64 @@ static void fp_expand_helper(Out* out)
+         "                  (mask & 8u) ? e.a : v.a);\n}\n");
+ }
+ 
++/* The body opens with the two register files as arrays, all 96 float4s zeroed, however few the program uses.
++ * Desktop GPU compilers drop what is unused. Mobile ones (Adreno measured) keep per-pixel arrays in slow scratch
++ * memory: 1.5 KB zeroed for every pixel, about 1.4 GB of traffic for one full-screen draw at 1280x720, and the
++ * game's own title screen (22 draws) took 250 ms a frame. Every access in the body is to a constant index, so this
++ * rewrites each USED register into a plain variable (r[3] -> _r3, h[0] -> _h0), declares only those, and leaves
++ * the body untouched if anything else indexes the arrays. Same values, same initial zero. Returns 1 if rewritten.
++ * PS3RECOMP_FP_ARRAYS=1 keeps the arrays (for comparing). */
++static int fp_ident_char(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; }
++
++static int fp_scalarize_registers(char* body, size_t* len, size_t cap)
++{
++    static const char decl[] =
++        "    float4 r[48]; float4 h[48];\n"
++        "    [unroll] for (int _i = 0; _i < 48; _i++) { r[_i] = (float4)0; h[_i] = (float4)0; }\n";
++    static int off = -1;
++    if (off < 0) { const char* e = getenv("PS3RECOMP_FP_ARRAYS"); off = (e && *e == '1'); }
++    if (off) return 0;
++    const size_t dl = sizeof decl - 1;
++    if (*len < dl || memcmp(body, decl, dl) != 0) return 0;
++    const char* rest = body + dl;
++    unsigned char ur[48] = {0}, uh[48] = {0};
++    for (const char* p = rest; *p; p++) {
++        if ((*p == 'r' || *p == 'h') && p[1] == '[' && (p == rest || !fp_ident_char(p[-1]))) {
++            const char* q = p + 2; unsigned v = 0, nd = 0;
++            while (*q >= '0' && *q <= '9' && nd < 4) { v = v * 10 + (unsigned)(*q - '0'); nd++; q++; }
++            if (!nd || *q != ']' || v >= 48) return 0;       /* an index that is not a plain constant */
++            (*p == 'r' ? ur : uh)[v] = 1;
++        }
++    }
++    char* tmp = (char*)malloc(cap);
++    if (!tmp) return 0;
++    size_t n = 0;
++    for (int f = 0; f < 2; f++)
++        for (unsigned i = 0; i < 48; i++)
++            if ((f ? uh : ur)[i]) {
++                const int w = snprintf(tmp + n, cap - n, "    float4 _%c%u = (float4)0;\n", f ? 'h' : 'r', i);
++                if (w < 0 || (size_t)w >= cap - n) { free(tmp); return 0; }
++                n += (size_t)w;
++            }
++    for (const char* p = rest; *p; p++) {
++        if ((*p == 'r' || *p == 'h') && p[1] == '[' && (p == rest || !fp_ident_char(p[-1]))) {
++            const char* q = p + 2; unsigned v = 0;
++            while (*q >= '0' && *q <= '9') { v = v * 10 + (unsigned)(*q - '0'); q++; }
++            const int w = snprintf(tmp + n, cap - n, "_%c%u", *p, v);
++            if (w < 0 || (size_t)w >= cap - n) { free(tmp); return 0; }
++            n += (size_t)w; p = q;                              /* p now on the ']' the loop step skips */
++        } else {
++            if (n + 2 > cap) { free(tmp); return 0; }
++            tmp[n++] = *p;
++        }
++    }
++    if (n + 1 > cap) { free(tmp); return 0; }
++    tmp[n] = '\0';
++    memcpy(body, tmp, n + 1); *len = n;
++    free(tmp);
++    return 1;
++}
++
+ static int rsx_fp_decompile_internal(
+     const u8* ucode, u32 max_bytes, u32 ctrl, u32 tex_cube_mask, u32 tex_vol_mask,
+     int buffered, const rsx_fp_shadow_desc* shadow, const u8 gamma_masks[16],
+@@ -666,6 +840,8 @@ static int rsx_fp_decompile_internal(
       * Emitting the preamble here would mean guessing it. */
      Out o = { out, out_size, 0, 1 };
      out[0] = '\0';
@@ -7575,7 +7640,7 @@ index cfb9685b..f766bf07 100644
      int uses_pack = 0;   /* a pack or unpack opcode was decoded: the preamble gets its helpers */
      out_puts(&o,
          "    float4 r[48]; float4 h[48];\n"
-@@ -779,7 +897,7 @@ static int rsx_fp_decompile_internal(
+@@ -779,7 +955,7 @@ static int rsx_fp_decompile_internal(
          Src s0, s1, s2;
          decode_src(w1, w1 & FP_SRC0_ABS, &s0);
          decode_src(w2, w2 & FP_SRC1_ABS, &s1);
@@ -7584,7 +7649,7 @@ index cfb9685b..f766bf07 100644
  
          /* Inline constant: any CONST source pulls the next 16 bytes as a
           * float4 literal and advances past it. */
-@@ -802,16 +920,16 @@ static int rsx_fp_decompile_internal(
+@@ -802,16 +978,16 @@ static int rsx_fp_decompile_internal(
           * (RPCS3 RSXFragmentProgram.h SRC2); on a branch the word is an
           * address instead. */
          const int persp = !is_branch && (w3 >> 31) != 0;
@@ -7605,7 +7670,7 @@ index cfb9685b..f766bf07 100644
          if (has_k)
              constant_slot++;
  
-@@ -1092,6 +1210,31 @@ static int rsx_fp_decompile_internal(
+@@ -1092,6 +1268,31 @@ static int rsx_fp_decompile_internal(
              dest_mask(w0, m);
  
              const char* sat = (w0 & FP_OUT_SAT) ? " _v = saturate(_v);" : "";
@@ -7637,7 +7702,7 @@ index cfb9685b..f766bf07 100644
              /* NV40 per-instruction result-scale modifier (SRC1 word bits
               * 28-30): 1/2/3 = *2/*4/*8, 5/6/7 = /2//4//8; applied to the
               * result BEFORE saturate (RPCS3 FragmentProgramDecompiler.cpp
-@@ -1161,6 +1304,8 @@ static int rsx_fp_decompile_internal(
+@@ -1161,6 +1362,8 @@ static int rsx_fp_decompile_internal(
              }
  
              if (has_dest) {
@@ -7646,7 +7711,15 @@ index cfb9685b..f766bf07 100644
                  const int target = fp_export_target(dst_idx, dst_half);
                  if (target >= 0) wrote[dst_half][target] = 1;
              }
-@@ -1783,6 +1928,41 @@ int rsx_fp_apply_wpos_grid(char* hlsl, u32 capacity, u32 sx, u32 sy)
+@@ -1357,6 +1560,7 @@ static int rsx_fp_decompile_internal(
+     }
+ 
+     if (!o.ok || !p.ok) return -1;
++    { size_t blen = o.len; if (fp_scalarize_registers(out, &blen, out_size)) o.len = (u32)blen; }
+     if (o.len + p.len + 1 > out_size) return -1;
+     memmove(out + p.len, out, o.len + 1);
+     memcpy(out, preamble, p.len);
+@@ -1783,6 +1987,41 @@ int rsx_fp_apply_wpos_grid(char* hlsl, u32 capacity, u32 sx, u32 sy)
      return 1;
  }
  

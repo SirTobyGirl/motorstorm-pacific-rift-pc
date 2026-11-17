@@ -236,8 +236,11 @@ if(SPU_SOURCES)
             # arm64 (Apple Silicon): NEON is the baseline and spu_helpers.h has
             # its NEON forms; FMA is always there, so the same no-contraction
             # rule as above keeps the exact scalar fallbacks exact.
+            # PORT_SPU_EXTRA: more options for these sources only, for experiments
+            # (e.g. -mtune for a phone's cores). Empty by default.
+            set(PORT_SPU_EXTRA "" CACHE STRING "extra compile options for the lifted SPU sources on arm64")
             set_source_files_properties(${SPU_SOURCES} PROPERTIES COMPILE_OPTIONS
-                "${PORT_SPU_OPT};-ffp-contract=off")
+                "${PORT_SPU_OPT};-ffp-contract=off;${PORT_SPU_EXTRA}")
         endif()
     endif()
 endif()
