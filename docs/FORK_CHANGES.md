@@ -20,6 +20,10 @@ from the author's `main` at `b89c73e`.
 
 `feature/gui-executable` is layers 1-5 plus this file.
 
+**`linux-fork` is this fork's main line:** layers 1-5, then the Linux-only
+declaration (below), then [the handheld and Android plan](PLAN_HANDHELD_AND_ANDROID.md).
+This fork is Linux-only because Linux on one desktop PC is all it can test.
+
 ## Taking a layer
 
 Layers are branches, so to take everything up to layer N, merge that branch
@@ -48,16 +52,16 @@ wizard without the scripts, or the workflow without the executable) conflicts in
 adds. The README edits are small and separate from the code, so if you only want
 the code, resolve those conflicts by keeping your README.
 
-## One optional change on the side
+## The Linux-only declaration
 
-| Branch | Commit | What it does |
+| Branch | Commits | What it does |
 |---|---|---|
-| `linux-only` | `2f4bd79` | Removes macOS and Metal from the **docs and scripts** (README, CREDITS, NOTES, the wizard, `build.sh` ...). The C++ and the toolkit patch are left alone. |
+| `linux-fork` | `f8574bc`, `6d1f9fc` | Removes macOS and Metal from the **docs and scripts** (README, CREDITS, NOTES, the wizard, `build.sh` ...), on top of all five layers. The C++ and the toolkit patch are left alone, so the code stays unified. |
+| `linux-only` | `2f4bd79` | The same removal made earlier on layers 1-2 only. It conflicts with layers 3 and up; `linux-fork` supersedes it and it is kept only for history. |
 
-This one goes against the author's cross-platform design, so it is kept apart.
-It is built on layers 1-2 and applies cleanly on top of them (`2f0ac1b`
-`1092e79` `2f4bd79`), but **not** on layers 3 and up (it conflicts in
-`scripts/setup_gui.py`). Nothing needs it.
+This goes against the author's cross-platform design, which is why it is not
+part of the five layers: take layers 1-5 and skip it if you want macOS text
+kept.
 
 `macos-metal` is the author's own branch, copied when the fork was made; it is
 not part of these changes.
