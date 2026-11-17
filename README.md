@@ -143,6 +143,16 @@ links the files, joins a split `ms2.psarc`, checks the checksums), and
 `scripts/doctor.sh` checks the machine and the checkout and says what is
 missing, at any point. The firmware is still installed in RPCS3 by hand.
 
+**Setup wizard.** `scripts/setup_gui.py` opens a page in your browser that
+does all of this with buttons: it checks the computer, prepares the game from
+an ISO or folder, installs the firmware through RPCS3, and runs the toolkit
+fetch, the lift and the build with a live log and progress bar, then starts
+the game. It drives the scripts above (so they stay the source of truth), uses
+only Python's standard library, listens on `127.0.0.1` with a random access
+token, and installs no system packages: it tells you what is missing. Linux
+and macOS. Its build settings (a local libraries folder, the clean build
+environment, the job count) are kept in `user/setup_gui.json`.
+
 ### 1. Get the code
 
 ```sh
@@ -391,7 +401,7 @@ described in [docs/NOTES.md](docs/NOTES.md).
 | `work/patches/ps3recomp.patch` | This port's changes to ps3recomp, the Metal backend's among them (regenerate with `scripts/make_patch.sh`) |
 | `work/tools/` | Lift helpers, test drivers and profilers ([work/tools/README.md](work/tools/README.md)) |
 | `work/run.sh` | Run the game, or isolated test instances (`INST=<name>`) |
-| `scripts/` | `doctor.sh`, `prepare_disc.sh`, `setup.sh`, `lift.sh`, `build.sh`, `make_patch.sh`, `check_clean.sh`, `install-hooks.sh` |
+| `scripts/` | `setup_gui.py`, `doctor.sh`, `prepare_disc.sh`, `setup.sh`, `lift.sh`, `build.sh`, `make_patch.sh`, `check_clean.sh`, `install-hooks.sh` |
 | `docs/` | Technical notes, required files, lessons from the Apocalypse port |
 
 Everything else (the dump, the lift, builds, logs, saves, the toolkit
