@@ -138,12 +138,11 @@ def make_env():
     if FROZEN:
         # PyInstaller points the library path at its own bundle; the build
         # tools we start must see the user's, not ours.
-        for var in ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"):
-            orig = env.pop(var + "_ORIG", None)
-            if orig is not None:
-                env[var] = orig
-            else:
-                env.pop(var, None)
+        orig = env.pop("LD_LIBRARY_PATH_ORIG", None)
+        if orig is not None:
+            env["LD_LIBRARY_PATH"] = orig
+        else:
+            env.pop("LD_LIBRARY_PATH", None)
     if cfg["clean_env"]:
         for v in LEAKY:
             env.pop(v, None)

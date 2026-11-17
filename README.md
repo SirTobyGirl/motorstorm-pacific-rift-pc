@@ -132,9 +132,8 @@ only; nothing of the game) and unpacks them on first run into `~/MotorStormPR`
 alone). The game, the firmware, the lift and the build then live in that
 folder. It still cannot install system packages (compiler, CMake, SDL2 ...):
 the wizard lists what is missing. The binary needs a glibc as new as the one
-it was built on, so build it on the oldest system you want to support. A
-PyInstaller build is made on the platform it is for; building it on a Mac
-works the same way but is untested.
+it was built on, so build it on the oldest system you want to support (the
+release workflow does this on Ubuntu 22.04).
 
 **Releases.** `.github/workflows/release-gui.yml` builds the executable on
 Ubuntu 22.04 (glibc 2.35, so it runs on that or any newer system), smoke-tests
