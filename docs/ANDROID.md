@@ -20,8 +20,20 @@ Adreno 740 (Vulkan 1.3). Built and run once; everything below was seen on it.
   game's boot and intro (about 1300 frames over six minutes).
 - No crash in a few minutes of running.
 
-**Not seen yet:** a race, the menus past the intro, sound, controller input, or
-an acceptable frame rate. Nobody has played it on the device.
+- After the intro logos it reaches the full MotorStorm: Pacific Rift title
+  screen (about three minutes in at the current speed), upright and correctly
+  proportioned, with the frame-rate overlay in the corner.
+
+**Not seen yet:** a race, the menus past the title screen, sound, controller
+input, or an acceptable frame rate. Nobody has played it on the device.
+
+### "The logo appears and then nothing happens"
+
+The game is not hung, it is slow. The startup screens run for a fixed number of
+frames, so at about 4 fps instead of 30 each one lasts about seven times longer
+in real time: the logo, then the title screen, then the menus take minutes. The
+log and the frame counter keep advancing (660 frames in 150 s), and the process
+stays alive.
 
 ## How it was measured (first numbers, intro and menus only)
 
@@ -40,6 +52,14 @@ yet tested: the slow intro video decode on one thread (the notes say it is only
 1.0 to 1.4 times real time on a fast desktop CPU), thread wake-up latency across
 the phone's big and little cores, and slow scalar fall-backs in the arm64 SPU
 helpers. A profile (`simpleperf`) is the next step.
+
+## Also seen
+
+While the game runs, Android's log shows an audio track being stopped about 45
+times a second (about 2,600 a minute). The port itself opens one SDL audio device
+once and only queues samples, so the cause is below it (SDL's Android audio
+backend, or underruns at 4 fps). Not investigated; a second thing to check once
+the frame rate is fixed.
 
 ## Building
 
@@ -72,6 +92,18 @@ scripts/android_monitor.sh 180          # samples every 2 s, then summarises
 ```
 
 ## Thor-specific notes
+
+- **Orientation.** The picture first came out rotated 90 degrees. The screen's
+  rotation was fine; the swapchain was created with
+  `preTransform = currentTransform` (a 90 degree rotation on a landscape
+  handheld), which tells Android the app has already rotated its output. The
+  backend now declares the picture unrotated on Android and lets the compositor
+  rotate it, and treats the resulting `VK_SUBOPTIMAL_KHR` as expected (otherwise
+  it would rebuild the swapchain every frame). `currentExtent` already comes in
+  landscape on this device; swapping it crushed the picture. The manifest and
+  an SDL hint also fix the app to landscape: `sensorLandscape` lets the
+  accelerometer pick, which is unreliable on a clamshell. Proper pre-rotation
+  (drawing rotated) would save the compositor's rotation pass; not done.
 
 - The Thor has two screens. `adb shell am start` opens apps on the second one
   (Display 4); use `--display 0` for the main screen.

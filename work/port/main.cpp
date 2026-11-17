@@ -568,6 +568,10 @@ int main(int argc, char** argv)
             if (access("dev_flash", F_OK) == 0) setenv("PS3_DEV_FLASH_DEFAULT", s_and_flash, 0);
             setenv("PS3_STDIO_UNBUFFERED", "1", 0);
             setenv("PS3RECOMP_VK_GUEST_PROGRAMS", "1", 0);
+            /* A fixed landscape, like the system's own apps. SDL overrides the manifest at run time with this hint
+             * (default: both landscapes, chosen by the accelerometer), which picks the wrong one on a handheld with a
+             * hinge. "LandscapeLeft" is SCREEN_ORIENTATION_LANDSCAPE; "LandscapeRight" would be the reverse. */
+            setenv("SDL_IOS_ORIENTATIONS", "LandscapeLeft", 0);
             /* env.txt in the app folder: one KEY=VALUE per line ('#' starts a comment). It stands in for the
              * VAR=value arguments run.sh takes: PS3_SKIP_START=1 boots at once, PS3RECOMP_FPS=60, and so on.
              * Read last so it overrides the defaults above. */
