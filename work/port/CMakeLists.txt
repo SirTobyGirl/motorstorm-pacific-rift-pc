@@ -175,7 +175,7 @@ elseif(PORT_ENABLE_SPU)
     endif()
 endif()
 
-add_executable(${PROJECT_NAME}
+set(PORT_SOURCES
     main.cpp
     settings.cpp
     ui.cpp
@@ -188,6 +188,16 @@ add_executable(${PROJECT_NAME}
     ${RECOMP_SOURCES}
     ${SPU_SOURCES}
 )
+
+if(ANDROID)
+    # Android has no standalone programs: SDL's Java launcher (SDLActivity)
+    # loads libmain.so and calls its SDL_main (main.cpp renames main).
+    add_library(${PROJECT_NAME} SHARED ${PORT_SOURCES})
+    set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME main)
+    target_link_libraries(${PROJECT_NAME} PRIVATE log android)
+else()
+    add_executable(${PROJECT_NAME} ${PORT_SOURCES})
+endif()
 
 # The lifted SPU sources use bare #include "spu_context.h". Scope that include
 # directory (and their flags) to those TUs alone: adding it to the whole target
@@ -270,6 +280,10 @@ if(PS3RECOMP_UI_ACTIVE)
     set_source_files_properties(ui_game.cpp ui_saves.cpp PROPERTIES
         COMPILE_DEFINITIONS "${PORT_UI_DEFS}"
         INCLUDE_DIRECTORIES "${PORT_UI_INCLUDES}")
+    if(ANDROID)
+        # main.cpp's Android entry point uses SDL (SDL_main, the app storage path).
+        set_source_files_properties(main.cpp PROPERTIES INCLUDE_DIRECTORIES "${PORT_UI_INCLUDES}")
+    endif()
     if(PNG_FOUND)
         message(STATUS "In-game menu:    on (start screen with PIC1.PNG, F1, F10)")
     else()

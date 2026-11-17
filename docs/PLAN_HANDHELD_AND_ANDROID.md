@@ -4,6 +4,10 @@
 > [ROADMAP.md](ROADMAP.md): stable performance as the standard, then enhanced
 > frame rate, resolution and detail. Much of what this plan needs (a baseline,
 > a measured profile, the runtime options) is built there first.
+>
+> **Update:** a first Android experiment has been run on an AYN Thor: it builds,
+> installs and boots the game's intro, but runs at about 4 fps while mostly
+> waiting. See [ANDROID.md](ANDROID.md). The rest of this plan is unchanged.
 
 This is a plan, not a result. Nothing here has been built or run on a handheld
 or a phone yet, and this fork can only be tested on one desktop Linux PC today

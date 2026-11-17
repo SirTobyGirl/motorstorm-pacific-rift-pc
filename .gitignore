@@ -10,6 +10,7 @@
 !/docs/
 !/scripts/
 !/.github/
+!/android/
 !/work/
 
 /work/*

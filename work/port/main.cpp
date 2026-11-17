@@ -534,8 +534,63 @@ static int run_guest(uint32_t entry, uint32_t stack_top) { return ppu_run(entry,
 extern "C" { char** port_argv = nullptr; }
 static char* s_argv_copy[64];
 
+#if defined(__ANDROID__)
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_main.h>   /* renames main to SDL_main, which SDLActivity's Java side calls */
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
+
 int main(int argc, char** argv)
 {
+#if defined(__ANDROID__)
+    /* SDLActivity calls SDL_main with no arguments, and there is no run.sh. The game lives in the app's own storage
+     * folder (/sdcard/Android/data/<package>/files, which adb push can fill): disc/PS3_GAME/USRDIR/EBOOT.elf, an
+     * optional dev_flash/, and the folders the port writes (hdd0, gamedata, user). stdout and stderr go nowhere on
+     * Android, so they are kept in run.log there. */
+    static char s_and_elf[1100], s_and_hdd[1100], s_and_user[1100], s_and_flash[1100];
+    static char* s_and_argv[3];
+    {
+        const char* base = SDL_AndroidGetExternalStoragePath();
+        if (!base) base = SDL_AndroidGetInternalStoragePath();
+        if (base && chdir(base) == 0) {
+            freopen("run.log", "w", stdout);
+            dup2(fileno(stdout), fileno(stderr));
+            setvbuf(stdout, nullptr, _IOLBF, 0);
+            mkdir("hdd0", 0770); mkdir("gamedata", 0770); mkdir("user", 0770);
+            snprintf(s_and_elf,  sizeof s_and_elf,  "%s/disc/PS3_GAME/USRDIR/EBOOT.elf", base);
+            snprintf(s_and_hdd,  sizeof s_and_hdd,  "%s/hdd0", base);
+            snprintf(s_and_user, sizeof s_and_user, "%s/user", base);
+            snprintf(s_and_flash, sizeof s_and_flash, "%s/dev_flash", base);
+            setenv("PS3_TITLE", "MotorStorm: Pacific Rift", 0);
+            setenv("PS3_HDD0_ROOT", s_and_hdd, 0);
+            setenv("PS3_USER_DIR", s_and_user, 0);
+            if (access("dev_flash", F_OK) == 0) setenv("PS3_DEV_FLASH_DEFAULT", s_and_flash, 0);
+            setenv("PS3_STDIO_UNBUFFERED", "1", 0);
+            setenv("PS3RECOMP_VK_GUEST_PROGRAMS", "1", 0);
+            /* env.txt in the app folder: one KEY=VALUE per line ('#' starts a comment). It stands in for the
+             * VAR=value arguments run.sh takes: PS3_SKIP_START=1 boots at once, PS3RECOMP_FPS=60, and so on.
+             * Read last so it overrides the defaults above. */
+            if (FILE* ef = fopen("env.txt", "r")) {
+                char line[512];
+                while (fgets(line, sizeof line, ef)) {
+                    char* hash = strchr(line, '#'); if (hash) *hash = 0;
+                    char* eq = strchr(line, '='); if (!eq) continue;
+                    *eq = 0; char* key = line; char* val = eq + 1;
+                    while (*key == ' ' || *key == '\t') key++;
+                    for (char* e = key + strlen(key); e > key && (e[-1] == ' ' || e[-1] == '\t'); ) *--e = 0;
+                    for (char* e = val + strlen(val); e > val && (e[-1] == '\n' || e[-1] == '\r' || e[-1] == ' '); ) *--e = 0;
+                    if (*key) setenv(key, val, 1);
+                }
+                fclose(ef);
+            }
+            s_and_argv[0] = (char*)"PacificRiftRecomp";
+            s_and_argv[1] = s_and_elf;
+            s_and_argv[2] = nullptr;
+            argc = 2; argv = s_and_argv;
+        }
+    }
+#endif
     for (int i = 0; i < argc && i < 63; i++) s_argv_copy[i] = strdup(argv[i]);
     port_argv = s_argv_copy;
 #ifdef __linux__
