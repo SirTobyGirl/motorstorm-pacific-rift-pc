@@ -137,6 +137,12 @@ scripts/setup.sh && scripts/lift.sh && scripts/build.sh
 work/run.sh
 ```
 
+**Shortcut for the game files.** `scripts/prepare_disc.sh <game.iso | PS3_GAME folder>`
+does step 2 below for you (extracts an ISO, decrypts `EBOOT.BIN` with RPCS3,
+links the files, joins a split `ms2.psarc`, checks the checksums), and
+`scripts/doctor.sh` checks the machine and the checkout and says what is
+missing, at any point. The firmware is still installed in RPCS3 by hand.
+
 ### 1. Get the code
 
 ```sh
@@ -210,6 +216,33 @@ cmake --build work/port/build
 
 On macOS leave `-DPS3RECOMP_RSX_VULKAN=ON` out: the Metal backend is always
 built there.
+
+### Immutable distros (Bazzite, Fedora Atomic, SteamOS)
+
+The packages in *Requirements* cannot always be installed system-wide. Two
+things that worked on Bazzite:
+
+- **Build SDL2 and glslang into your home** and point CMake at them (SDL2
+  2.32.x and glslang 15.x were used; SDL2 needs a clean toolchain, see below):
+
+  ```sh
+  cmake -S SDL -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=$HOME/.local/ps3deps -DSDL_TEST=OFF
+  cmake --build build && cmake --install build      # likewise for glslang (-DENABLE_OPT=OFF -DBUILD_EXTERNAL=OFF)
+  export CMAKE_PREFIX_PATH=$HOME/.local/ps3deps
+  export PKG_CONFIG_PATH=$HOME/.local/ps3deps/lib64/pkgconfig
+  export LD_LIBRARY_PATH=$HOME/.local/ps3deps/lib64        # when running
+  ```
+
+- **Build with a clean environment.** A compiler or sysroot exported in the
+  shell (`CC`, `CXX`, `LDFLAGS`, `CMAKE_SYSROOT`, as some SDK or toolchain
+  setups do) is picked up by CMake and can fail with link errors such as an
+  undefined `__isoc23_strtol`. `scripts/doctor.sh` warns when they are set;
+  build with `env -u CC -u CXX -u LDFLAGS -u CMAKE_SYSROOT scripts/build.sh`.
+
+- **RPCS3 as a Flatpak** (`net.rpcs3.RPCS3`) keeps its firmware under
+  `~/.var/app/net.rpcs3.RPCS3/config/rpcs3/dev_flash`. Run the game with
+  `PS3_DEV_FLASH` set to that folder if `work/run.sh` does not find it.
 
 ### 6. Play
 
@@ -358,7 +391,7 @@ described in [docs/NOTES.md](docs/NOTES.md).
 | `work/patches/ps3recomp.patch` | This port's changes to ps3recomp, the Metal backend's among them (regenerate with `scripts/make_patch.sh`) |
 | `work/tools/` | Lift helpers, test drivers and profilers ([work/tools/README.md](work/tools/README.md)) |
 | `work/run.sh` | Run the game, or isolated test instances (`INST=<name>`) |
-| `scripts/` | `setup.sh`, `lift.sh`, `build.sh`, `make_patch.sh`, `check_clean.sh`, `install-hooks.sh` |
+| `scripts/` | `doctor.sh`, `prepare_disc.sh`, `setup.sh`, `lift.sh`, `build.sh`, `make_patch.sh`, `check_clean.sh`, `install-hooks.sh` |
 | `docs/` | Technical notes, required files, lessons from the Apocalypse port |
 
 Everything else (the dump, the lift, builds, logs, saves, the toolkit
