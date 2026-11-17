@@ -1,12 +1,7 @@
 # Technical notes
 
-The port runs on Linux (x86-64, Vulkan) and macOS (Apple Silicon, Metal). The
-sections up to *Adaptive 60/30* were written while the port was Linux-only:
-their findings about the game, the lift and the runtime hold on both systems,
-but the `VK_*` switches, the gdb and `/proc` recipes and the fps figures in
-them are the Linux/Vulkan build's. Everything specific to the Mac (the Metal
-backend's side of each feature, timers, thread priority, arm64 code, how to
-measure) is in [macOS / Metal](#macos--metal-2026-11-13) at the end.
+The port runs on Linux (x86-64, Vulkan). The `VK_*` switches, the gdb and
+`/proc` recipes and the fps figures below are the Linux/Vulkan build's.
 
 ## EBOOT.elf (BCES-00129 01.00), first pass with ps3recomp v0.18.0
 
@@ -139,7 +134,7 @@ PAD_FILE holds (`libs/input/cellPad.c`): a line `<mask> [reports]` presses the m
 
 `perf` isn't installed. As a sampling profiler, run gdb `thread apply all bt 1` in a loop and count the top frames.
 
-On macOS the same instances work (`work/run.sh` maps the dump and offscreen switches onto the Metal backend's). The process is named `PacificRiftRecomp` there, not cut to 15 characters; `work/tools/lib.sh` finds and kills instances on both systems. Saves go to `gamedata/dev_hdd0` under the repository root and are shared by every instance. The profiler is `/usr/bin/sample <pid> 4 1`.
+Saves go to `gamedata/dev_hdd0` under the repository root and are shared by every instance.
 
 ## Performance
 
@@ -395,197 +390,6 @@ boot with PS3RECOMP_FPS. The findings below still hold.
   trip the switch; watch adaptive behaviour with
   `WINDOW=1 SECS=0 DELAY=45 work/tools/capture_race.sh <dir> ...` instead.
 
-## macOS / Metal (2026-11-13)
-
-The port on an Apple Silicon Mac, through the toolkit's Metal backend
-(`libs/video/rsx_metal_backend.m`) instead of the Vulkan one. The lift, the
-port's hooks and the HLE runtime are the same; `scripts/build.sh` picks the
-backend from the host. Brought up on an M1 Max, macOS 27. What it took, in the
-order it was found:
-
-- **Build.** `clock_nanosleep` and `__builtin_ia32_pause` do not exist there
-  (`include/ps3emu/host_time.h`: `ps3_sleep_until_mono_ns`, `ps3_cpu_relax`).
-  Mach-O has no undefined weak references: `spu_fastpaths.c`'s optional
-  `..._lifted` symbol needs `-U` at link (`work/port/CMakeLists.txt`). The
-  x86 `-march` flags were already conditional; the SPU sources get
-  `-ffp-contract=off` on arm64 as well (FMA is always there).
-- **First boot** rendered the intro, the menus and a race with no further
-  change: the Metal backend already implemented the draw engine's required
-  hooks. What it lacked were the optional hooks this port added for Vulkan.
-- **Corner snapshots** (`color_snapshot_rect`): without it the race showed the
-  right/bottom smear described under *In-race rendering* (the game renders
-  into the corner of full-size targets when it lowers its resolution).
-- **GPU-side vertex fetch** (`fetch_pool` / `fetch_serial` / `draw_fetch`):
-  the pool is a 128 MB shared `MTLBuffer` (unified memory: the CPU writes a
-  block, the vertex function reads it, no copy). Pull pipelines have no vertex
-  descriptor. The engine's HLSL preamble declares the per-draw table as a
-  push-constant block and the pool as (set 1, binding 0); `rsx_shader_msl.cpp`
-  gives them `[[buffer(2)]]` and `[[buffer(3)]]` (by decoration the pool would
-  land on `buffer(0)`, VPConst's). Indexed strips draw straight from host-order
-  indices in the pool; Metal always restarts a strip at the all-ones index.
-  Serials are command-buffer serials, published by completion handlers.
-  ~100% of race draws take it. 60 fps mode: ~24 -> ~33 fps at that stage.
-- **Asynchronous readback** (`readback_async` / `readback_fetch`) for the
-  exposure target: the synchronous path committed and waited for the whole
-  frame at every present (12-14 ms of a 45 ms frame). Commits no longer wait
-  unless asked to (`eng_commit(dst, wait)`); an offscreen present is paced like
-  a windowed one (`PS3RECOMP_METAL_HEADLESS_ASYNC=1`, set by the port).
-- **Encoder state filtering**: a draw sends only the state that differs from
-  the draw before it in the pass (`EngEnc`); a race frame is ~3800 draws.
-- **`vs_constants_persist`**, with the constant blocks kept beside the staging
-  arena so the first draw after a commit can stage them again; a full record
-  stream is committed instead of dropped.
-- **Render scale** (`PS3RECOMP_RES_SCALE`), as on Vulkan: targets N times
-  their guest size, viewport/scissor/clear rectangles/depth-bias slope scaled
-  at the edge, seeds and 2D transfers blown up and readbacks shrunk with a
-  region blit (`eng_region_blit`), depth readbacks decimated on the CPU.
-- **Present**: the frame keeps its shape in the drawable (`eng_fit_rect`,
-  `PS3RECOMP_STRETCH=1` fills), filtered when scaled. The drawable is the
-  view's size in pixels (Retina), so a 1280x720-point window shows a
-  2560x1440 frame area.
-- **Upscaling**: MetalFX's spatial scaler to the size the frame is shown at,
-  then the present pass's contrast-adaptive sharpen at the menu's sharpness
-  (`PS3RECOMP_FSR=1` / the menu; `rsx_metal_backend_set_upscaler`). It stands
-  in for FSR 1, whose two passes are Vulkan compute shaders here. Idle when
-  the window is not larger than the frame; needs macOS 13.
-- **Menu and HUD**: `libs/video/rsx_ui_metal.mm` implements `rsx_ui.h` with
-  Dear ImGui's Metal and macOS backends. AppKit and the ImGui context live on
-  the main thread: the present hands its command buffer over with a
-  `dispatch_sync` and the UI is built and encoded there, after the frame's
-  blit. Keys are read in the backend's event pump (F1, F10, F11 /
-  Option+Return, Escape). `PS3RECOMP_UI_SHOT=<file.ppm>` writes the window's
-  frame with the UI once (`PS3RECOMP_UI_SHOT_AFTER`, default 120 UI frames).
-- **One present per flip** (`work/port/main.cpp`, `present_if_flipped`): the
-  frame clock presented on the flip-pending flag and, separately, on the flip
-  count, so a flip reached in the drain just before the count check was
-  presented twice. In a window that doubled the HUD's frame rate (52 "fps"
-  in the 30 fps intro; 30 shown while a race ran slow). The count decides now.
-- **Frame dumps**: `PS3RECOMP_METAL_FRAME_DUMP` + `_EVERY`, and
-  `PS3RECOMP_METAL_FRAME_SEQ` + `_SEQ_TRIGGER`; `main.cpp` maps the
-  `PS3RECOMP_VK_*` names (window, full screen, dump, sequence) onto them, so
-  `work/run.sh` and the tools are the same on both systems.
-- **Pipeline prewarm**. A pipeline's first use costs a translation, two MSL
-  compiles and a pipeline state on the RSX thread (~8 ms warm, far more
-  cold), and Metal cannot keep a compiled library on disk. The translated MSL
-  is cached (`PS3RECOMP_MSL_CACHE`, in `user/shader_cache`), and the inputs of
-  every pipeline made are logged beside it (`pipelines.bin`: each HLSL text
-  once, then a small record per pipeline). The next start builds them all on
-  a utility-QoS thread while the game boots, and `pipeline_create` finds them
-  ready: a second run of the same race took 212 of its 214 pipelines from
-  the prewarm, which had made 207 in 0.2 s (Metal's own cache of compiled
-  functions makes a repeat build that cheap; the first-ever build is not).
-  `PS3RECOMP_METAL_PREWARM=0` turns it off; deleting the file is safe.
-
-### Timers (the largest single finding)
-
-macOS coalesces a plain thread's timers. For a process with no foreground
-window, measured on the M1 Max: `nanosleep(50 us)` lasts 79 us, 200 us lasts
-300, 1 ms lasts 1.4-1.6 ms and 16.7 ms lasts 22 ms, and
-`pthread_cond_timedwait`, `dispatch_semaphore_wait` and `mach_wait_until` are
-late by the same shares. The frame here is a chain of short waits (the vblank
-beat, JobBatchHandler's 50 us poll, main's 250 us back-offs, 1 ms passes), so
-every link ran 30-60% long, and the RSX thread sat idle 40% of a frame that
-missed its vblank. A kqueue `EVFILT_TIMER` with `NOTE_CRITICAL` is not
-coalesced (50 us -> 60, 1 ms -> 1.04 ms) and needs no real-time class:
-`runtime/platform/darwin_precise_sleep.c` keeps one kqueue per thread, arms
-the timer a little early and yields the rest. `include/ps3emu/host_time.h`
-redirects `nanosleep`/`usleep` to it and is force-included into the runtime
-and the port's own sources on Apple. 60 fps mode: ~33 -> ~40 fps (pack,
-p50 21.5 ms); 30 fps mode holds its 33.3 ms interval (p90 36 ms).
-
-Also there: `pthread_rwlock` parks in the kernel at the first contention,
-where a Windows SRW lock or a futex lock spins. The six SPURS workers spent a
-sixth of their time in `_pthread_rwlock_lock_wait` on their instance's lock;
-`win32_compat.h`'s SRW locks now try 200 spins first on Apple.
-
-### arm64 code
-
-- `ppu_vmx.h`: NEON forms of vaddfp/vsubfp/vmaddfp/vnmsubfp (the x86 build
-  has SSE/FMA ones). Each vmaddfp was four `fmaf` calls out of line, ~5% of
-  the race's main thread. Checked bit for bit against the scalar forms over
-  160M operations (NaNs, denormals, both NJ settings).
-- `spu_helpers.h` had NEON forms of the arithmetic (fa/fm/fma, the integer
-  ops) but the estimate and conversion instructions (fi, frest, frsqest,
-  cflts, cfltu, csflt, cuflt) were scalar per lane and called out of line:
-  `spu_cfltu`, `spu_csflt` and `spu_fi` were ~8% of each job worker, more in
-  MultiStream's thread (which runs at ~85% of a core) and Bink's. They now have
-  NEON forms by the AVX2 forms' integer rules (csflt/cuflt count leading
-  zeros instead of going through a double): `test_spu_float_est.c`, extended
-  to run on arm64, 0 mismatches; 1.1-2.6 ns a vector against 2.9-7.1 ns.
-- What is left in MultiStream's profile is `spu__fma_fix` (~10%): the exact
-  per-lane path a fused multiply-add takes when a lane's host result is not a
-  finite single, i.e. an operand is an extended-range word. Its DSP code runs
-  whole vectors where some lanes hold such words. Not changed.
-
-### Thread priority and yields (why the game slowed down on a busy Mac)
-
-Two things made the game collapse whenever other processes wanted the CPU
-(the intro at 5 fps with twelve busy processes beside it, races swinging
-between 14 and 41 fps with the machine's own load):
-
-- **Priority.** A thread made with a bare `pthread_create` runs at the
-  default priority, 31, like every other process. The QoS class does not help
-  here: for a process that is not the foreground application (started from a
-  terminal, or offscreen) a user-interactive thread still shows 31 in
-  `ps -M`. An explicit `pthread_setschedparam` is honoured. On Apple the
-  runtime's `pthread_create` is redirected (`host_time.h`,
-  `darwin_precise_sleep.c`: `ps3_pthread_create`) and every thread starts at
-  user-interactive and priority 45 (of the 15..47 a user thread may ask for);
-  the prewarm thread lowers itself to 20. `PS3_THREAD_QOS=default` keeps the
-  system's choice.
-- **Yields.** Darwin's `sched_yield` is `swtch_pri`: it drops the caller to
-  the bottom priority until it next runs, so each of the runtime's many short
-  yield loops handed a 10 ms time slice to any other process. It is
-  redirected to `ps3_sched_yield`: `swtch()`, which only switches to a thread
-  of the same or a higher priority, then a few pause instructions.
-
-With both, the intro holds 30 fps beside the same twelve busy processes, and
-race rounds repeat within a few fps at a load average of 20.
-
-### The job wait (60 fps mode ~40 -> ~53 fps)
-
-After the above the frame was the main thread's wait for its job batches
-(33% of it in `sys_timer_usleep`) while the six SPURS lanes sat parked 64% of
-the time: latency, not work. Two changes, both macOS defaults:
-
-- `PS3_USLEEP_CAP` also caps main's own back-off (250 us at lr 0x0094CCA8) at
-  60 us (`work/port/main.cpp`). On Linux a shorter poll there measured as a
-  loss; with sleeps that end on time it is a gain: ~40 -> ~45 fps.
-- `SPURS_PM_SPIN_US=80` (`cellSpurs.c`, `spurs_pm_worker`): a lane that has
-  just run looks for its next run for 80 us before it parks on its condition
-  variable. ~48 -> ~53 fps (p50 19.7 -> 18.1 ms), same poll settings.
-
-### Measuring on macOS
-
-`work/tools/bench.sh` runs (no per-thread CPU figures: those need `/proc` and
-gdb). `/usr/bin/sample <pid> 4 1` is the sampling profiler.
-`PS3RECOMP_METAL_STATS=1` prints, every 120 presents, GPU time per frame
-(command buffers' `GPUEndTime - GPUStartTime`), command buffers, waited
-commits, passes, copies and draws. A race frame is ~5-7 ms of GPU time on the
-M1 Max at 720p, in one command buffer with no waits: the GPU is not the limit.
-
-The numbers in this section were taken on a machine that was also running a
-virtual machine, a backup and other work (load average 10-40 on 10 cores).
-Until the priority and yield fixes below they moved with that load far more
-than with any change (14 to 41 fps for one build in 60 fps mode); the later
-ones (the job wait) repeat within a few fps.
-
-### Open on macOS
-
-- 60 fps mode does not quite hold 60 on the M1 Max (~53 fps in the pack).
-  The RSX thread is now the busiest (two thirds of a frame: per-draw engine
-  work and encoding ~3800 draws), then the main thread.
-  The Linux-only `PS3_USLEEP_WAKE` / `PS3_USLEEP_PASSWAKE` (futex) variants
-  have no macOS form yet (`__ulock_wait` / `os_sync_wait_on_address` would do).
-- Timed condition waits (`pthread_cond_timedwait` behind `WaitForSingleObject`
-  with a timeout, the SPURS coordinator's 1 ms pass) are still coalesced; only
-  sleeps are precise.
-- The record stream is encoded on the RSX thread at commit (no equivalent of
-  `VK_ASYNC_RECORD` yet).
-- Audio through a real device, a controller, saves and the 4K path were not
-  exercised beyond starting: the port was driven offscreen with the pad file,
-  and in a window for the menu, full screen, 2x scale and upscaler checks.
-
 ## Start screen and menus (2026-11-16)
 
 After the RACiT launcher (Ratchet & Clank: A Crack in Time's PC port), the
@@ -615,9 +419,8 @@ Play, Settings, Saves, Game files, Help, Quit.
 - **Pads on the start screen.** Before the boot nothing has started SDL's
   controller support. `port_ui_backend_ready` starts it on the frame-clock
   thread (the one pumping the window's events) while the game is not yet
-  running, so the cellPadInit race the macOS work found
-  (`g_pad_sdl_ready`) cannot happen; the Controller page reads pads on the
-  start screen on that basis. Not on macOS (AppKit/GameController there).
+  running, so the cellPadInit race (`g_pad_sdl_ready`) cannot happen; the Controller
+  page reads pads on the start screen on that basis.
 - **Fonts.** The toolkit fell back to ImGui's 13 px bitmap font when Inter or
   Noto Sans *Medium* was missing (Debian/Ubuntu have Noto Sans Regular only),
   and drew titles by scaling that bitmap font 3x: pixelated. rsx_ui now also

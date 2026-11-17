@@ -16,8 +16,8 @@ bad()  { printf '  MISSING  %s\n' "$1"; fails=$((fails + 1)); }
 
 OS="$(uname -s)"
 echo "Platform"
-[ "$OS" = Linux ] || [ "$OS" = Darwin ] && ok "$OS $(uname -m)" || bad "unsupported system: $OS"
-if [ "$OS" = Linux ]; then
+if [ "$OS" != Linux ]; then bad "unsupported system: $OS (Linux only for now)"; else
+    ok "Linux $(uname -m)"
     [ "$(uname -m)" = x86_64 ] && ok "x86-64" || bad "the Linux build needs x86-64"
     if grep -qw avx2 /proc/cpuinfo 2>/dev/null; then ok "AVX2 (lift is built for x86-64-v3)"
     else warn "no AVX2: set PORT_PPU_ARCH and PORT_SPU_ARCH empty in CMake (README, Requirements)"; fi
@@ -81,12 +81,12 @@ echo "Game files (disc/)"
 USR="$ROOT/disc/PS3_GAME/USRDIR"
 ELF="$USR/EBOOT.elf"
 if [ -f "$ELF" ]; then
-    got=$( (sha256sum "$ELF" 2>/dev/null || shasum -a 256 "$ELF") | cut -c1-64)
+    got=$(sha256sum "$ELF" | cut -c1-64)
     [ "$got" = "$EXPECT_SHA" ] && ok "EBOOT.elf is BCES-00129 01.00" \
         || bad "EBOOT.elf has the wrong checksum (other region or version, or not decrypted): $got"
 else bad "disc/PS3_GAME/USRDIR/EBOOT.elf (run scripts/prepare_disc.sh)"; fi
 if [ -e "$USR/ms2.psarc" ]; then
-    sz=$(stat -L -c %s "$USR/ms2.psarc" 2>/dev/null || stat -L -f %z "$USR/ms2.psarc")
+    sz=$(stat -L -c %s "$USR/ms2.psarc")
     [ "$sz" = "$EXPECT_PSARC" ] && ok "ms2.psarc has the expected size" \
         || bad "ms2.psarc is $sz bytes, expected $EXPECT_PSARC (incomplete, or split pieces not joined)"
 else bad "disc/PS3_GAME/USRDIR/ms2.psarc (run scripts/prepare_disc.sh)"; fi
@@ -95,14 +95,13 @@ else bad "disc/PS3_GAME/USRDIR/ms2.psarc (run scripts/prepare_disc.sh)"; fi
 echo "Firmware (dev_flash)"
 FLASH=""
 for d in "${PS3_DEV_FLASH:-}" "$ROOT/dev_flash" "$HOME/.config/rpcs3/dev_flash" \
-         "$HOME/.var/app/net.rpcs3.RPCS3/config/rpcs3/dev_flash" \
-         "$HOME/Library/Application Support/rpcs3/dev_flash"; do
+         "$HOME/.var/app/net.rpcs3.RPCS3/config/rpcs3/dev_flash"; do
     [ -n "$d" ] && [ -f "$d/sys/external/flashMP3.pic" ] && { FLASH="$d"; break; }
 done
 if [ -n "$FLASH" ]; then
     ok "dev_flash found: $FLASH"
     case "$FLASH" in
-        "$HOME/.config/rpcs3/dev_flash"|"$ROOT/dev_flash"|"$HOME/Library/Application Support/rpcs3/dev_flash") ;;
+        "$HOME/.config/rpcs3/dev_flash"|"$ROOT/dev_flash") ;;
         *) warn "not in a default place: run the game with PS3_DEV_FLASH=\"$FLASH\"" ;;
     esac
 else bad "dev_flash (install the PS3 firmware in RPCS3, File > Install Firmware)"; fi

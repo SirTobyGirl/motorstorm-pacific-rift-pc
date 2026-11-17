@@ -138,7 +138,7 @@ def main():
         off = eb.off_of(plugins[note])
         jobs.append((note, base, ENTRIES.get(note, []), eb.d[off:off + elf_extent(eb.d[off:off + 0x10000])],
                      f"EBOOT EA 0x{plugins[note]:X}"))
-    # $PS3_DEV_FLASH, else ./dev_flash, else RPCS3's copy (Linux, macOS).
+    # $PS3_DEV_FLASH, else ./dev_flash, else RPCS3's copy.
     flash = None
     for cand in (os.environ.get("PS3_DEV_FLASH"), ROOT / "dev_flash", Path.home() / ".config/rpcs3/dev_flash",
                  Path.home() / "Library/Application Support/rpcs3/dev_flash"):

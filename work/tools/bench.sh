@@ -9,8 +9,8 @@
 # Prints fps, pack fps, frame-interval p50/p90 and CPU ms per frame for main,
 # the FIFO/RSX thread, the three busiest SPURS job workers and the MultiStream
 # SPU thread, then the mean over the rounds. Extra VAR=val args go to the game.
-# The per-thread CPU figures need Linux (/proc and gdb); elsewhere (macOS) the
-# line has the frame figures only.
+# The per-thread CPU figures need /proc and gdb; without them the line has the
+# frame figures only.
 # Kills the instance with SIGKILL after each round (the game ignores SIGINT).
 # FTRACE=<prefix>: also record a PS3_FTRACE timeline of the window into
 # <prefix>_r<round>.txt (ps3recomp/tools/ftrace_report.py).

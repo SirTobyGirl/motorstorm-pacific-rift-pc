@@ -24,7 +24,3 @@
 - **[SDL2](https://www.libsdl.org)** (zlib): window (Linux), pad and audio.
 - **[glslang](https://github.com/KhronosGroup/glslang)** and the
   **Vulkan** headers and loader (Khronos): shader translation and rendering.
-- **[SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross)** (Apache-2.0):
-  on macOS, the game's shaders from SPIR-V to the Metal Shading Language.
-- **Metal** and **MetalFX** (Apple): rendering and upscaling on macOS. The
-  Metal backend is ps3recomp's, extended by this port's patch.
