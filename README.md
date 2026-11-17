@@ -166,6 +166,16 @@ it was built on, so build it on the oldest system you want to support. A
 PyInstaller build is made on the platform it is for; building it on a Mac
 works the same way but is untested.
 
+**Updates.** The wizard's *Updates* card checks GitHub when you press *Check
+for updates* (it never checks by itself) and offers newer commits of the repo
+and branch the executable was built from (`UPDATE_REPO` / `UPDATE_REF` when
+building, or the *Update source* fields in Build settings). It only offers a
+change that is strictly newer than the files in the workspace, asks before
+doing anything, and replaces just the port's scripts and sources: never the
+game, saves, settings, lift or build. A file you had changed is copied to
+`.update-backup/` first. It then tells you whether to lift or build again. A
+git checkout is not touched (use `git pull`).
+
 ### 1. Get the code
 
 ```sh

@@ -8,6 +8,8 @@
 # files only: scripts/, work/, docs/*.md and the top-level files) and unpacks
 # them into a workspace (default ~/MotorStormPR) on first run. Nothing from
 # the game, nothing generated from it, and none of your own files are in it.
+# The wizard can update those files from GitHub (the repo and branch it was
+# built from, see UPDATE_REPO / UPDATE_REF below).
 #
 # It is built with PyInstaller into .build-gui/ (git-ignored). The binary
 # needs a glibc at least as new as the one it was built on, so build it on
@@ -44,6 +46,12 @@ git ls-files -z -- scripts work README.md LICENSE CREDITS.md version.txt .gitign
         cp -p "$f" "$B/payload/$f"
     done
 echo "$ver" > "$B/payload/.bundle_version"
+# Where the wizard looks for updates: UPDATE_REPO / UPDATE_REF, else the origin
+# remote's GitHub repo and the current branch (use a release branch or tag).
+repo="${UPDATE_REPO:-$(git remote get-url origin 2>/dev/null | sed -E 's#^(https://github.com/|git@github.com:)##; s#\.git$##')}"
+ref="${UPDATE_REF:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null)}"
+[ "$ref" = HEAD ] && ref=main
+case "$repo" in */*) echo "$repo $ref" > "$B/payload/.update_source"; echo "updates from: $repo @ $ref" ;; *) echo "no GitHub origin: the wizard will have no default update source" ;; esac
 echo "payload: $(find "$B/payload" -type f | wc -l) files, $(du -sh "$B/payload" | cut -f1), version $ver"
 
 # 3. Refuse to build if anything that looks like the game got in.

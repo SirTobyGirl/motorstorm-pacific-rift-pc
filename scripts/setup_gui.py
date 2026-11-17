@@ -15,7 +15,7 @@ with a random access token and opens your browser. Linux and macOS.
 It never installs system packages: it tells you what is missing.
 Nothing from your game is sent anywhere.
 """
-import argparse, json, os, re, secrets, shutil, signal, subprocess, sys, threading, time, webbrowser
+import argparse, datetime, io, json, os, re, secrets, shutil, signal, subprocess, sys, tarfile, threading, time, urllib.error, urllib.parse, urllib.request, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -27,7 +27,7 @@ CONFIG_PATH = ""
 # Variables a shell may export that make CMake pick up a foreign toolchain.
 LEAKY = ["CC", "CXX", "AR", "RANLIB", "LDFLAGS", "CMAKE_SYSROOT", "CMAKE_TOOLCHAIN_FILE", "LD_LIBRARY_PATH"]
 
-cfg = {"prefix": "", "clean_env": True, "jobs": "", "flash": ""}
+cfg = {"prefix": "", "clean_env": True, "jobs": "", "flash": "", "update_repo": "", "update_ref": ""}
 
 
 def set_root(root):
@@ -61,24 +61,55 @@ def ensure_workspace(root):
             ver = f.read().strip()
     except OSError:
         ver = "unknown"
-    marker = os.path.join(root, ".bundle_version")
-    try:
-        with open(marker) as f:
-            have = f.read().strip()
-    except OSError:
-        have = ""
+    # .bundle_origin: the executable's version at the last unpack. .bundle_version:
+    # the version of the files now in the workspace (an update moves only this one).
+    origin = os.path.join(root, ".bundle_origin")
+    have = read_text(origin) or read_text(os.path.join(root, ".bundle_version"))
     if have == ver or os.path.isdir(os.path.join(root, ".git")):
         return
     print("Unpacking the port's scripts and sources into %s ..." % root, flush=True)
+    backup = os.path.join(root, ".update-backup", time.strftime("%Y%m%d-%H%M%S"))
     for dp, _, fns in os.walk(src):
         rel = os.path.relpath(dp, src)
-        os.makedirs(os.path.join(root, rel), exist_ok=True)
         for fn in fns:
             if fn == ".bundle_version":
                 continue
-            shutil.copy2(os.path.join(dp, fn), os.path.join(root, rel, fn))
-    with open(marker, "w") as f:
-        f.write(ver + "\n")
+            with open(os.path.join(dp, fn), "rb") as f:
+                data = f.read()
+            place_file(root, os.path.normpath(os.path.join(rel, fn)), data,
+                       os.stat(os.path.join(dp, fn)).st_mode & 0o777, backup)
+    write_text(os.path.join(root, ".bundle_version"), ver)
+    write_text(origin, ver)
+
+
+def read_text(path):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def write_text(path, text):
+    with open(path, "w") as f:
+        f.write(text + "\n")
+
+
+def place_file(root, rel, data, mode, backup_dir):
+    """Write root/rel. A different file already there is copied to backup_dir first."""
+    dest = os.path.join(root, rel)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    if os.path.isfile(dest):
+        with open(dest, "rb") as f:
+            if f.read() == data:
+                return False
+        bk = os.path.join(backup_dir, rel)
+        os.makedirs(os.path.dirname(bk), exist_ok=True)
+        shutil.copy2(dest, bk)
+    with open(dest, "wb") as f:
+        f.write(data)
+    os.chmod(dest, mode or 0o644)
+    return True
 
 
 def pick_root(arg):
@@ -297,7 +328,8 @@ def run_status():
         elif line.startswith("          ") and cur and cur["items"]:
             cur["items"][-1]["text"] += "\n" + line.strip()
     return {"sections": sections, "flash": find_flash(), "jobs": auto_jobs()[0], "cfg": cfg,
-            "home": HOME, "root": ROOT}
+            "home": HOME, "root": ROOT, "update": list(update_source()),
+            "version": read_text(os.path.join(ROOT, ".bundle_version"))}
 
 
 def list_dir(path, kind):
@@ -331,6 +363,123 @@ def play():
         raise ValueError("the port is not built yet")
     log = open(os.path.join(ROOT, "work", "runs", "gui-launch.out"), "ab") if os.path.isdir(os.path.join(ROOT, "work", "runs")) else subprocess.DEVNULL
     subprocess.Popen(["bash", "work/run.sh"], cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+
+
+# -------------------------------------------------------------- updates ----
+UA = "motorstorm-setup-gui"
+LAST_CHECK = {}
+
+
+def update_source():
+    repo, ref = cfg.get("update_repo", ""), cfg.get("update_ref", "")
+    if not repo:
+        parts = read_text(os.path.join(ROOT, ".update_source")).split()
+        if len(parts) >= 2:
+            repo, ref = parts[0], parts[1]
+    repo, ref = repo.strip(), (ref or "main").strip()
+    if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo) or not re.fullmatch(r"[\w./-]+", ref):
+        return "", ref
+    return repo, ref
+
+
+def gh_get(url, binary=False, limit=120 << 20):
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/vnd.github+json"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            data = r.read(limit + 1)
+    except urllib.error.HTTPError as e:
+        raise ValueError("GitHub answered %d %s" % (e.code, "(rate limit reached, try later)" if e.code == 403 else e.reason))
+    except (urllib.error.URLError, OSError) as e:
+        raise ValueError("could not reach GitHub: %s" % getattr(e, "reason", e))
+    if len(data) > limit:
+        raise ValueError("download is larger than expected; stopped")
+    return data if binary else json.loads(data)
+
+
+def rebuild_hint(files):
+    if any(f.startswith("work/patches/") or f.startswith("work/tools/") or f in ("scripts/lift.sh", "scripts/setup.sh") for f in files):
+        return "lift"      # the lifted code or the toolkit patch may change: lift and build again
+    if any(f.startswith("work/port/") or f == "scripts/build.sh" for f in files):
+        return "build"
+    return ""
+
+
+def check_update():
+    if os.path.isdir(os.path.join(ROOT, ".git")):
+        raise ValueError("this workspace is a git checkout: update it with git pull")
+    repo, ref = update_source()
+    if not repo:
+        raise ValueError("no update source set (owner/repo and a branch or tag, under Build settings)")
+    latest = gh_get("https://api.github.com/repos/%s/commits/%s" % (repo, urllib.parse.quote(ref, safe="/")))
+    sha = latest["sha"]
+    msg = (latest.get("commit", {}).get("message") or "").splitlines()[0:1]
+    date = (latest.get("commit", {}).get("committer", {}) or {}).get("date", "")[:10]
+    cur = read_text(os.path.join(ROOT, ".bundle_version")).replace("-dirty", "")
+    out = {"repo": repo, "ref": ref, "current": cur, "latest": sha[:7], "can_apply": False, "files": []}
+    LAST_CHECK.clear()
+    if cur and sha.startswith(cur):
+        out["message"] = "Up to date (%s, %s@%s)." % (cur, repo, ref)
+        return out
+    try:
+        cmp_ = gh_get("https://api.github.com/repos/%s/compare/%s...%s" % (repo, cur, sha)) if cur else None
+    except ValueError:
+        cmp_ = None
+    what = "%s%s" % (msg[0] if msg else "", " (%s)" % date if date else "")
+    if cmp_ and cmp_.get("status") == "ahead":
+        files = [f["filename"] for f in cmp_.get("files", [])]
+        out.update(can_apply=True, files=files, ahead=cmp_.get("ahead_by", 0), rebuild=rebuild_hint(files))
+        LAST_CHECK.update(repo=repo, sha=sha)
+        out["message"] = "Update available: %d new change(s), %s -> %s. Latest: %s" % (cmp_.get("ahead_by", 0), cur, sha[:7], what)
+    elif cmp_ and cmp_.get("status") in ("behind", "diverged"):
+        out["message"] = ("%s@%s is %s relative to this workspace (%s): not applying it automatically. Latest there: %s"
+                          % (repo, ref, cmp_["status"], cur, what))
+    else:
+        out["message"] = ("This workspace's version (%s) is not known on %s@%s, so I can't tell whether %s is newer: not applying it. Latest: %s"
+                          % (cur or "none", repo, ref, sha[:7], what))
+    return out
+
+
+ALLOWED_FILES = {"README.md", "LICENSE", "CREDITS.md", "version.txt", ".gitignore"}
+
+
+def allowed_path(rel):
+    if not rel or rel.startswith("/") or ".." in rel.split("/"):
+        return False
+    return (rel in ALLOWED_FILES or rel.startswith(("scripts/", "work/"))
+            or (rel.startswith("docs/") and rel.count("/") == 1 and rel.endswith(".md")))
+
+
+def apply_update():
+    if not LAST_CHECK:
+        raise ValueError("check for updates first")
+    if os.path.isdir(os.path.join(ROOT, ".git")):
+        raise ValueError("this workspace is a git checkout: update it with git pull")
+    repo, sha = LAST_CHECK["repo"], LAST_CHECK["sha"]
+    data = gh_get("https://codeload.github.com/%s/tar.gz/%s" % (repo, sha), binary=True)
+    backup = os.path.join(ROOT, ".update-backup", time.strftime("%Y%m%d-%H%M%S"))
+    changed, skipped = [], 0
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tf:
+        for m in tf:
+            rel = m.name.split("/", 1)[1] if "/" in m.name else ""
+            if not m.isreg() or not allowed_path(rel):
+                skipped += 1
+                continue
+            f = tf.extractfile(m)
+            if f and place_file(ROOT, rel, f.read(), m.mode & 0o777, backup):
+                changed.append(rel)
+    write_text(os.path.join(ROOT, ".bundle_version"), sha[:7])
+    hint = rebuild_hint(changed)
+    LAST_CHECK.clear()
+    msg = "Updated to %s: %d file(s) changed." % (sha[:7], len(changed))
+    if changed and os.path.isdir(backup):
+        msg += " Files you had changed were saved to .update-backup/."
+    if hint == "lift":
+        msg += " The toolkit, patches or lift tools changed: run Toolkit, Lift and Build again."
+    elif hint == "build":
+        msg += " The port's sources changed: run Build again."
+    elif changed and any(c == "scripts/setup_gui.py" for c in changed):
+        msg += " The wizard itself changed: restart it to use the new version."
+    return {"message": msg, "changed": changed, "rebuild": hint, "version": sha[:7]}
 
 
 # ---------------------------------------------------------------- http ----
@@ -373,6 +522,13 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, JOB.snapshot(int((q.get("since") or ["0"])[0] or 0)))
         if u.path == "/api/ls":
             return self._send(200, list_dir((q.get("path") or [""])[0], (q.get("kind") or [""])[0]))
+        if u.path == "/api/update/check":
+            try:
+                return self._send(200, check_update())
+            except ValueError as e:
+                return self._send(400, {"error": str(e)})
+            except Exception as e:      # an unexpected reply from GitHub
+                return self._send(502, {"error": "unexpected update reply: %s" % e})
         self._send(404, {"error": "not found"})
 
     def do_POST(self):
@@ -386,7 +542,7 @@ class H(BaseHTTPRequestHandler):
         u = urlparse(self.path).path
         try:
             if u == "/api/config":
-                for k in ("prefix", "jobs", "flash"):
+                for k in ("prefix", "jobs", "flash", "update_repo", "update_ref"):
                     if k in body:
                         cfg[k] = str(body[k]).strip()
                 if "clean_env" in body:
@@ -398,6 +554,8 @@ class H(BaseHTTPRequestHandler):
                 if not JOB.start(name, argv, make_env(), watcher):
                     return self._send(409, {"error": "something is already running"})
                 return self._send(200, {"ok": True})
+            if u == "/api/update/apply":
+                return self._send(200, apply_update())
             if u == "/api/stop":
                 JOB.stop()
                 return self._send(200, {"ok": True})
@@ -439,6 +597,7 @@ dialog::backdrop{background:#0008}#ls{max-height:50vh;overflow:auto;border:1px s
  <details><summary>Build settings</summary>
   <div class="row"><label>Local libraries folder (SDL2, glslang) <small>optional</small></label><input id="prefix" type="text" placeholder="e.g. ~/.local/ps3deps"></div>
   <div class="row"><label><input id="clean" type="checkbox"> Build in a clean environment (ignore CC, CXX, LDFLAGS, CMAKE_SYSROOT from this shell)</label></div>
+  <div class="row"><label>Update source <small>owner/repo</small></label><input id="updrepo" type="text" placeholder="owner/repo"> <input id="updref" type="text" style="max-width:200px" placeholder="branch or tag"></div>
   <div class="row"><label>Parallel build jobs</label><input id="jobs" type="text" style="max-width:90px" placeholder="auto"> <small id="jobsnote"></small></div>
  </details></div>
 
@@ -458,6 +617,11 @@ dialog::backdrop{background:#0008}#ls{max-height:50vh;overflow:auto;border:1px s
 
 <div class="card"><h2>5. Play <span id="b4" class="badge mut">…</span></h2>
  <div class="row"><button class="pri" id="play">Start the game</button> <small>Opens its own window with the start screen.</small></div></div>
+
+<div class="card"><h2>Updates <span id="ver" class="badge mut"></span></h2>
+ <small>Checks GitHub only when you press the button. An update replaces just the port's scripts and sources in this folder; your game, saves and settings are not touched, and any file you changed is saved first.</small>
+ <div class="row"><button id="updcheck">Check for updates</button> <button class="pri" id="updgo" hidden>Update now</button></div>
+ <div id="updout" class="mut"></div></div>
 
 <div class="card"><h2>Progress <span id="jobname" class="badge mut"></span></h2>
  <progress id="prog" value="0" max="1" hidden></progress>
@@ -483,13 +647,19 @@ async function refresh(){
  const f=sec("Firmware");badge("b2",lvl(f),lvl(f)=="ok"?"installed":"missing");
  const b=sec("Built");const built=b.items.length&&b.items.every(i=>i.level=="ok");badge("b3",built?"ok":"warn",built?"built":"not built");
  badge("b4",built&&lvl(g)=="ok"?"ok":"mut",built?"ready":"build first");
- if(!$("prefix").dataset.set){$("prefix").value=st.cfg.prefix;$("clean").checked=st.cfg.clean_env;$("jobs").value=st.cfg.jobs;$("jobsnote").textContent="auto: "+st.jobs;$("prefix").dataset.set=1}
+ $("ver").textContent=st.version?"version "+st.version:"";
+ if(!$("prefix").dataset.set){$("prefix").value=st.cfg.prefix;$("updrepo").value=st.cfg.update_repo;$("updref").value=st.cfg.update_ref;$("updrepo").placeholder=st.update[0]||"owner/repo";$("updref").placeholder=st.update[1]||"branch or tag";$("clean").checked=st.cfg.clean_env;$("jobs").value=st.cfg.jobs;$("jobsnote").textContent="auto: "+st.jobs;$("prefix").dataset.set=1}
 }
 const esc=s=>s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
-async function saveCfg(){await post("/api/config",{prefix:$("prefix").value,clean_env:$("clean").checked,jobs:$("jobs").value})}
-["prefix","clean","jobs"].forEach(i=>$(i).addEventListener("change",async()=>{await saveCfg();refresh()}));
+async function saveCfg(){await post("/api/config",{prefix:$("prefix").value,clean_env:$("clean").checked,jobs:$("jobs").value,update_repo:$("updrepo").value,update_ref:$("updref").value})}
+["prefix","clean","jobs","updrepo","updref"].forEach(i=>$(i).addEventListener("change",async()=>{await saveCfg();refresh()}));
 async function run(step,extra){await saveCfg();try{await post("/api/run",{step,...extra});since=0;$("log").textContent=""}catch(e){alert(e.message);chain=[]}}
 $("recheck").onclick=refresh;
+$("updcheck").onclick=async()=>{await saveCfg();const o=$("updout");o.className="mut";o.textContent="Checking…";$("updgo").hidden=true;
+ try{const j=await api("/api/update/check");o.textContent=j.message+(j.files&&j.files.length?"\nChanged files: "+j.files.slice(0,12).join(", ")+(j.files.length>12?" …":""):"");o.style.whiteSpace="pre-wrap";$("updgo").hidden=!j.can_apply}
+ catch(e){o.className="bad";o.textContent="Could not check: "+e.message}};
+$("updgo").onclick=async()=>{if(!confirm("Update the port's scripts and sources in this folder? Files you changed are saved first."))return;const o=$("updout");o.textContent="Updating…";
+ try{const j=await post("/api/update/apply",{});o.className="ok";o.textContent=j.message;$("updgo").hidden=true;refresh()}catch(e){o.className="bad";o.textContent="Update failed: "+e.message}};
 $("prepare").onclick=()=>run("prepare",{path:$("gamepath").value});
 $("firmware").onclick=()=>run("firmware",{path:$("puppath").value});
 ["setup","lift","build"].forEach(s=>$(s).onclick=()=>run(s));
