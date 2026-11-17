@@ -26,6 +26,9 @@
         android:isGame="true"
         android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
 
+        <!-- Lets `adb shell simpleperf` and perfetto profile this app without it being a debug build. -->
+        <profileable android:shell="true" android:enabled="true" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

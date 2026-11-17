@@ -53,6 +53,45 @@ yet tested: the slow intro video decode on one thread (the notes say it is only
 the phone's big and little cores, and slow scalar fall-backs in the arm64 SPU
 helpers. A profile (`simpleperf`) is the next step.
 
+## Profile (simpleperf, 12 s and 8 s samples on the Thor)
+
+`scripts/android_profile.sh` records and symbolizes this. Two phases:
+
+**Loading (the first minute or so).** One thread takes about half of all CPU
+samples, about 89% of a core, and the rest of the phone is idle. Its call chain
+is `spu_pool_thread -> spu_run_lifted_job_abi -> ...` into one 38 KB lifted SPU
+program (image `cbf1b1a1`), 98.9% of it in one leaf function. The mix is quadword
+byte rotates and shifts, shuffles, loads and stores, with no single slow helper:
+a bit-stream decoder. The notes say the game's file loader (FIOS) sends its
+decompression requests to an SPU **zlib task**, and this task sits on that queue
+(taskset `0x10483480`), so this is very likely the game's data being inflated by
+interpreted SPU code on one core. (Inferred from the size, the instruction mix
+and the queue; not confirmed against the program's source.)
+
+**Title screen (about three minutes in), per 8 s:**
+
+| Thread | Share of samples | What it is |
+|---|---|---|
+| 29130 | 30% | the **Bink video decoder** (SPU image `b34579b4`, the one the notes flag as the intro-video bottleneck), about 46% of a core |
+| 26660 | 27% | **a busy-polling thread**: 55% in the kernel, 23% in `clock_gettime`, 5% in `sched_yield`; about half a core spent doing nothing useful (likely the frame clock, which the notes say polls every 1 ms) |
+| 26725 | 13% | the audio mixer's MultiStream DSP plug-ins |
+
+So the game is not slow because the phone is overloaded: no thread is saturated
+and most of the phone is idle. It is slow because the work is serial and the lifted
+SPU code is slow per instruction on one core, and (separately) a thread wastes a
+core polling. Candidate fixes, in the order I would try them:
+
+1. **Stop the clock thread busy-polling** (sleep to the next vblank with an
+   absolute-time sleep). Small and safe; saves heat and battery.
+2. **A native inflate for the SPU zlib task** (the port already has a mechanism for
+   exact native replacements of lifted SPU functions, `spu_fastpaths.c`). The
+   request format has to be understood first. This would also shorten loads on
+   Linux.
+3. **Make the lifted SPU code faster on arm64** (build flags for the phone's cores,
+   fewer round trips through the register file). Helps every SPU task, Bink included.
+
+Not yet known: how much of the frame time each of these buys back.
+
 ## Also seen
 
 While the game runs, Android's log shows an audio track being stopped about 45
