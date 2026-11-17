@@ -1,5 +1,10 @@
 # Plan: Steam Deck, Linux handhelds and Android
 
+> **Status: deferred.** This is a future goal. The current goals are in
+> [ROADMAP.md](ROADMAP.md): stable performance as the standard, then enhanced
+> frame rate, resolution and detail. Much of what this plan needs (a baseline,
+> a measured profile, the runtime options) is built there first.
+
 This is a plan, not a result. Nothing here has been built or run on a handheld
 or a phone yet, and this fork can only be tested on one desktop Linux PC today
 (Ryzen 7 5800X, Radeon RX 9070 XT, 31 GB RAM). Statements are marked

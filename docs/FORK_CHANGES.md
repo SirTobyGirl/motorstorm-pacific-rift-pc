@@ -21,7 +21,9 @@ from the author's `main` at `b89c73e`.
 `feature/gui-executable` is layers 1-5 plus this file.
 
 **`linux-fork` is this fork's main line:** layers 1-5, then the Linux-only
-declaration (below), then [the handheld and Android plan](PLAN_HANDHELD_AND_ANDROID.md).
+declaration (below), then [the roadmap](ROADMAP.md) (current goals: stable
+performance, then enhanced frame rate, resolution and detail) and the deferred
+[handheld and Android plan](PLAN_HANDHELD_AND_ANDROID.md).
 This fork is Linux-only because Linux on one desktop PC is all it can test.
 
 ## Taking a layer
