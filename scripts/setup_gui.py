@@ -478,7 +478,10 @@ def apply_update():
     elif hint == "build":
         msg += " The port's sources changed: run Build again."
     elif changed and any(c == "scripts/setup_gui.py" for c in changed):
-        msg += " The wizard itself changed: restart it to use the new version."
+        if FROZEN:
+            msg += " The wizard itself changed, but this executable runs its own built-in copy: get or build a new MotorStormPR-Setup to use it."
+        else:
+            msg += " The wizard itself changed: restart it to use the new version."
     return {"message": msg, "changed": changed, "rebuild": hint, "version": sha[:7]}
 
 
