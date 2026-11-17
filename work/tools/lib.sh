@@ -1,4 +1,4 @@
-# Shared by the test drivers (sourced). Linux and macOS.
+# Shared by the test drivers (sourced). Linux.
 
 # Process ids of running games. Linux cuts a process name to 15 characters.
 port_pids() { { pgrep -x PacificRiftReco; pgrep -x PacificRiftRecomp; } 2>/dev/null | sort -u; }
@@ -18,7 +18,7 @@ inst_pids() { local p; for p in $(port_pids); do pid_has_env "$p" "PAD_FILE=$1/p
 kill_inst_dir() { local p; for p in $(inst_pids "$1"); do kill -KILL "$p"; done; }
 
 # One measuring run at a time: hold <lockfile> on fd 9 until the script ends.
-# Without flock(1) (macOS has none) the runs are simply not serialised.
+# Without flock(1) the runs are simply not serialised.
 bench_lock() {
     exec 9>"$1"
     if command -v flock >/dev/null; then

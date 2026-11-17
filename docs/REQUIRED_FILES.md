@@ -11,7 +11,7 @@ in the repository, and nothing the build makes from it may be shared.
 ## The executable
 
 `EBOOT.BIN` is encrypted (SCE header). Decrypt it to `EBOOT.elf`, e.g. with
-RPCS3 (*Utilities → Decrypt PS3 Binaries*; RPCS3 runs on Linux and macOS). Expected result:
+RPCS3 (*Utilities → Decrypt PS3 Binaries*; RPCS3 runs on Linux). Expected result:
 
 ```
 sha256 bbb7fe2545e54847483439f59cda54e907db23a111d7afe9a1b655624886b287  EBOOT.elf
@@ -21,7 +21,7 @@ size   19047304 bytes
 ## Layout
 
 `disc/` is git-ignored. Link the dump and copy the decrypted ELF in (the same
-commands on Linux and macOS):
+commands):
 
 ```sh
 SRC=/path/to/your/dump/BCES00129/PS3_GAME
@@ -41,8 +41,7 @@ The game opens files under `/dev_flash` (system fonts, the firmware MP3
 decoder that MultiStream loads). The port serves them from a real `dev_flash`
 tree: `$PS3_DEV_FLASH`. Unless you set it yourself, `work/run.sh` takes
 `./dev_flash` (git-ignored) when that directory exists, else RPCS3's copy:
-`~/.config/rpcs3/dev_flash` on Linux, `~/Library/Application
-Support/rpcs3/dev_flash` on macOS. Install the official PS3 firmware
+`~/.config/rpcs3/dev_flash`. Install the official PS3 firmware
 (`PS3UPDAT.PUP` from Sony) in RPCS3 (*File → Install Firmware*) to get it; a
 `dev_flash` made on another machine can simply be copied to `./dev_flash`. `work/tools/lift_ms_dsp.py` also lifts `sys/external/flashMP3.pic`
 from it during `scripts/lift.sh`; without it that decoder runs interpreted.

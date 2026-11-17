@@ -9,7 +9,7 @@
 #              PS3RECOMP_VK_DUMP=work/frames/frame.ppm (-> work/frames/now.png).
 # buttons: start up down left right cross circle square triangle l1 r1 l2 r2 select none
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-mask() {   # no associative array: macOS ships bash 3.2
+mask() {   # no associative array (works on old bash)
     case "$1" in
         select) echo 0x0001 ;; start) echo 0x0008 ;; up) echo 0x0010 ;; right) echo 0x0020 ;;
         down) echo 0x0040 ;; left) echo 0x0080 ;; l2) echo 0x0100 ;; r2) echo 0x0200 ;;

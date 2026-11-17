@@ -11,7 +11,7 @@ repository's scripts and sources and unpacks them into a workspace folder
 (default ~/MotorStormPR) on first run, so users need no checkout.
 
 Standard library only (no tkinter or GTK needed). It listens on 127.0.0.1
-with a random access token and opens your browser. Linux and macOS.
+with a random access token and opens your browser. Linux only for now.
 It never installs system packages: it tells you what is missing.
 Nothing from your game is sent anywhere.
 """
@@ -148,7 +148,7 @@ def make_env():
         for v in LEAKY:
             env.pop(v, None)
         # Prefer the system's tools over any SDK that sits first in PATH.
-        sysdirs = ["/usr/local/bin", "/usr/bin", "/bin", "/opt/homebrew/bin"]
+        sysdirs = ["/usr/local/bin", "/usr/bin", "/bin"]
         rest = [p for p in env.get("PATH", "").split(":") if p and p not in sysdirs]
         env["PATH"] = ":".join([d for d in sysdirs if os.path.isdir(d)] + rest)
     pre = cfg["prefix"].strip()
@@ -245,8 +245,7 @@ JOB = Job()
 def find_flash():
     for d in (cfg["flash"], os.environ.get("PS3_DEV_FLASH", ""), os.path.join(ROOT, "dev_flash"),
               os.path.join(HOME, ".config/rpcs3/dev_flash"),
-              os.path.join(HOME, ".var/app/net.rpcs3.RPCS3/config/rpcs3/dev_flash"),
-              os.path.join(HOME, "Library/Application Support/rpcs3/dev_flash")):
+              os.path.join(HOME, ".var/app/net.rpcs3.RPCS3/config/rpcs3/dev_flash")):
         if d and os.path.isfile(os.path.join(d, "sys/external/flashMP3.pic")):
             return d
     return ""
@@ -697,8 +696,8 @@ def main():
     ap.add_argument("--port", type=int, default=0)
     ap.add_argument("--no-browser", action="store_true")
     a = ap.parse_args()
-    if sys.platform not in ("linux", "darwin"):
-        sys.exit("setup_gui: Linux and macOS only (the scripts it drives are bash)")
+    if not sys.platform.startswith("linux"):
+        sys.exit("setup_gui: Linux only for now (the scripts it drives are bash)")
     root = pick_root(a.root)
     ensure_workspace(root)
     if not os.path.isfile(os.path.join(root, "scripts", "doctor.sh")):

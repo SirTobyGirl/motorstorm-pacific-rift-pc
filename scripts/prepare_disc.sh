@@ -22,7 +22,7 @@ IN="$(cd "$(dirname "$IN")" && pwd)/$(basename "$IN")"
 WORK="${PREPARE_WORK:-$ROOT/disc.work}"     # extraction and decrypt scratch (git-ignored by the allowlist)
 DISC="${DISC_DIR:-$ROOT/disc}"
 die() { echo "prepare_disc: $*" >&2; exit 1; }
-sha() { (sha256sum "$1" 2>/dev/null || shasum -a 256 "$1") | cut -c1-64; }
+sha() { sha256sum "$1" | cut -c1-64; }
 
 # 1. Find PS3_GAME, extracting an ISO if that is what we were given.
 if [ -f "$IN" ]; then
@@ -78,7 +78,7 @@ elif ls "$SRC"/USRDIR/ms2.psarc.666* >/dev/null 2>&1; then
     echo "joining ms2.psarc pieces (about 4.8 GB)"
     cat "$SRC"/USRDIR/ms2.psarc.666* > "$DISC/PS3_GAME/USRDIR/ms2.psarc"
 else die "no ms2.psarc in $SRC/USRDIR"; fi
-sz=$(stat -L -c %s "$DISC/PS3_GAME/USRDIR/ms2.psarc" 2>/dev/null || stat -L -f %z "$DISC/PS3_GAME/USRDIR/ms2.psarc")
+sz=$(stat -L -c %s "$DISC/PS3_GAME/USRDIR/ms2.psarc")
 [ "$sz" = "$EXPECT_PSARC" ] || die "ms2.psarc is $sz bytes, expected $EXPECT_PSARC (truncated copy or extraction?)"
 
 echo "disc/ is ready. Next: scripts/doctor.sh, then scripts/setup.sh, lift.sh, build.sh."
