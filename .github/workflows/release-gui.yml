@@ -1,0 +1,83 @@
+# Build the packaged setup wizard (MotorStormPR-Setup) on an older Linux image,
+# so it runs on any system with a glibc at least that old, and attach it to a
+# GitHub Release.
+#
+#   - push a tag like v1.0.0  -> build, smoke-test, create the Release with the file
+#   - run it by hand (Actions tab -> Run workflow) -> build and keep the file as an
+#     artifact only, no Release
+#
+# Nothing of the game is in the file: the build script packs git-tracked files
+# only and refuses to build if a game-type file is among them.
+name: Release setup wizard
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04        # glibc 2.35: the binary runs on systems with that or newer
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Safety check (no game files, no credentials)
+        run: scripts/check_clean.sh --tracked
+
+      - name: Build the executable
+        env:
+          # Where the wizard looks for updates: this repo's default branch,
+          # or the repository variable UPDATE_REF if you set one.
+          UPDATE_REPO: ${{ github.repository }}
+          UPDATE_REF: ${{ vars.UPDATE_REF || github.event.repository.default_branch }}
+        run: scripts/build_gui_exe.sh
+
+      - name: Smoke test
+        run: scripts/smoke_gui_exe.sh dist/MotorStormPR-Setup
+
+      - name: Keep the build
+        uses: actions/upload-artifact@v4
+        with:
+          name: MotorStormPR-Setup-linux-x86_64
+          path: |
+            dist/MotorStormPR-Setup
+            dist/MotorStormPR-Setup.sha256
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write            # create the Release
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: MotorStormPR-Setup-linux-x86_64
+          path: dist
+
+      - name: Create the Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          chmod +x dist/MotorStormPR-Setup
+          cat > notes.md <<'NOTES'
+          Setup wizard for Linux x86-64: one file, no Python needed.
+
+          1. Download `MotorStormPR-Setup`, make it executable (`chmod +x`) and run it.
+          2. It opens a page in your browser and unpacks into `~/MotorStormPR`.
+
+          **No game files are included.** You need your own copy of the game
+          (BCES-00129, version 01.00), already decrypted, and the PS3 firmware.
+          The wizard checks your computer, prepares the game, and runs the
+          lift and build on your machine. It cannot install system packages;
+          it lists what is missing.
+
+          Check the download with `sha256sum -c MotorStormPR-Setup.sha256`.
+          NOTES
+          gh release create "$TAG" dist/MotorStormPR-Setup dist/MotorStormPR-Setup.sha256 \
+            --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes-file notes.md --verify-tag

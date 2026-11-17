@@ -166,6 +166,14 @@ it was built on, so build it on the oldest system you want to support. A
 PyInstaller build is made on the platform it is for; building it on a Mac
 works the same way but is untested.
 
+**Releases.** `.github/workflows/release-gui.yml` builds the executable on
+Ubuntu 22.04 (glibc 2.35, so it runs on that or any newer system), smoke-tests
+it (`scripts/smoke_gui_exe.sh`) and, when you push a tag such as `v1.0.0`,
+attaches it and its SHA-256 to a GitHub Release. Run by hand from the Actions
+tab it only keeps the build as a downloadable artifact. Set the repository
+variable `UPDATE_REF` to choose the branch or tag the wizard's updates follow
+(default: the repository's default branch).
+
 **Updates.** The wizard's *Updates* card checks GitHub when you press *Check
 for updates* (it never checks by itself) and offers newer commits of the repo
 and branch the executable was built from (`UPDATE_REPO` / `UPDATE_REF` when

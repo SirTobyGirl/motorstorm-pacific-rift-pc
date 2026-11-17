@@ -9,6 +9,7 @@
 !/version.txt
 !/docs/
 !/scripts/
+!/.github/
 !/work/
 
 /work/*
