@@ -28,6 +28,7 @@ write only under `work/inst/<name>/`, which is git-ignored.
 | `lib.sh` | Sourced by the scripts above: finding and killing an instance, the bench lock. |
 | `finish_race.sh` | Soak: two full races, results, quit, back to the menu, with screenshots of each step. |
 | `bench.sh` | The standard benchmark: boots an instance per round, races, and reports fps, frame-interval percentiles and (Linux only: `/proc`, gdb) CPU ms per frame per thread. The binary must be named `PacificRiftRecomp`. |
+| `ftrace_slow.py` | Compares the slow frames of a `PS3_FTRACE` trace with the fast ones and shows how the slow frames are spaced (a fixed rhythm points at something periodic). Record a trace with `FTRACE=<prefix> work/tools/bench.sh`. |
 | `fliplog.py` | fps and frame-interval percentiles from a `PS3RECOMP_FLIPLOG` file. |
 
 ## Profiling

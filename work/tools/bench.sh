@@ -14,6 +14,9 @@
 # Kills the instance with SIGKILL after each round (the game ignores SIGINT).
 # FTRACE=<prefix>: also record a PS3_FTRACE timeline of the window into
 # <prefix>_r<round>.txt (ps3recomp/tools/ftrace_report.py).
+# BENCH_DUMP_EVERY=<n>: frames between the frame dumps the script reads the screen from (default 10).
+#   Each dump reads a whole frame back and writes it to disk: at 1440p that is 11 MB every 10 frames and
+#   shows as a slow frame every 10th frame (a 169 ms rhythm at 60 fps). Raise it (60) for steady figures.
 # PROF_TRIGGER=<file>: created at the window's start and removed at its end,
 # for a sampler preloaded through the game's environment arguments.
 set -uo pipefail
@@ -79,7 +82,7 @@ for r in $(seq 1 "$N"); do
     for try in 1 2 3; do                      # to_race.sh can miss a menu step: boot again
         kill_inst; wait 2>/dev/null; rm -f "$FL"; : > "$D/run.log"
         FT=(); [ -n "${FTRACE:-}" ] && { rm -f "${FTRACE}_r$r.txt"; FT=(PS3_FTRACE="-1:10:${FTRACE}_r$r.txt"); }
-        env "$@" "${FT[@]}" INST="$I" TIMEOUT=900 PS3RECOMP_VK_DUMP_EVERY=10 PS3RECOMP_FLIPLOG="$FL" work/run.sh >/dev/null 2>&1 9>&- &
+        env "$@" "${FT[@]}" INST="$I" TIMEOUT=900 PS3RECOMP_VK_DUMP_EVERY="${BENCH_DUMP_EVERY:-10}" PS3RECOMP_FLIPLOG="$FL" work/run.sh >/dev/null 2>&1 9>&- &
         sleep 3
         if INST="$I" work/tools/to_race.sh > "$D/to_race.txt" 2>&1; then ok=1; break; fi
         echo "round $r try $try: $(tail -1 "$D/to_race.txt")" >&2

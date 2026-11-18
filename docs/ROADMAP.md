@@ -59,6 +59,8 @@ the first-run stutter. Commit the numbers (only numbers, no game data) to
 
 - the first race's loading screen **whites out over time** (`docs/NOTES.md`,
   *In-race rendering*, still open);
+- 60 fps mode is **steady in the race** once the benchmark's own overhead is removed (58.8 fps,
+  90th percentile 18.2 ms; see [BASELINE.md](BASELINE.md)); about 4% of frames are still slow, in clusters;
 - 60 fps mode **dips in the crash camera's slow motion**, where SPU physics jobs
   fill all 6 job lanes for about 23 ms of a 44 ms frame;
 - the race is a **latency chain**: about 20 ms on the main thread, then a wait
