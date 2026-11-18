@@ -65,6 +65,15 @@ This goes against the author's cross-platform design, which is why it is not
 part of the five layers: take layers 1-5 and skip it if you want macOS text
 kept.
 
+## Android experiment (paused, on its own branch)
+
+The branch `android-experiment` builds a private arm64 APK of the port and ran it on an
+AYN Thor: the game boots, plays its intro and reaches its first 3D scene at 30 fps. Its
+notes (`docs/ANDROID.md` on that branch) record what the experiment showed and how to
+resume. The branch is **not** merged here because it carries a shader change that
+alters output on every platform and has not been checked in a race. Nothing from it is
+needed for the Linux build.
+
 `macos-metal` is the author's own branch, copied when the fork was made; it is
 not part of these changes.
 
