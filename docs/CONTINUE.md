@@ -47,6 +47,11 @@ must say yes), (4) the decrypt step through the finder on a real dump.
   the next Android step: it shows whether a race is limited by the GPU, which decides whether rendering at
   half resolution is the right lever. It is not a setting yet (`PS3RECOMP_RES_SCALE` clamps at 1).
 
+## Also in flight: uncapped frame rate
+
+The owner wants an uncapped frame rate. The first measurement (the engine tops out near 63 fps whatever the clock) and
+the plan are in [UNCAPPED.md](UNCAPPED.md); the first real work is making the main thread's frame cheaper.
+
 ## Next step: anisotropic filtering
 
 The Vulkan renderer has **no anisotropic filtering** and ignores the texture **LOD bias** (a comment at
