@@ -63,10 +63,14 @@ shaders translated to Vulkan.
 | Online play | ❌ not planned (the servers are gone) |
 | Windows | 🔜 planned: not built or tested yet |
 
-Measured on a Ryzen 9 5950X with an RTX 3090 on Linux. **Known issue:** in 60
-fps mode the frame rate dips in the crash camera's slow-motion replay, where
-the game's SPU physics jobs fill every job lane (see
-[docs/NOTES.md](docs/NOTES.md), *Performance*).
+The status table and the 60 fps note above are the **original author's**, measured on a Ryzen 9 5950X with an
+RTX 3090. **This fork's own measurements** are on a Ryzen 7 5800X with a Radeon RX 9070 XT (Mesa RADV): 29.9 fps
+at the defaults and **58.8 fps at 1440p in 60 fps mode** (median frame 16.7 ms, 90th percentile 18.2 ms), in a
+Free-Play race. See [docs/BASELINE.md](docs/BASELINE.md) for the method and its limits and
+[docs/TESTED_ON.md](docs/TESTED_ON.md) for the machine and what has not been tested.
+
+**Known issue:** in 60 fps mode the frame rate dips in the crash camera's slow-motion replay, where the game's SPU
+physics jobs fill every job lane (see [docs/NOTES.md](docs/NOTES.md), *Performance*).
 
 Technical notes: [docs/NOTES.md](docs/NOTES.md).
 
@@ -88,10 +92,12 @@ Technical notes: [docs/NOTES.md](docs/NOTES.md).
 - Linux x86-64. The lifted code is built for `x86-64-v3` (AVX2/FMA) by
   default; set the CMake cache variables `PORT_PPU_ARCH` and `PORT_SPU_ARCH`
   empty for an older CPU.
-- A Vulkan GPU and driver (developed on NVIDIA).
+- A Vulkan GPU and driver. Developed on NVIDIA by the original author; this fork was tested on AMD with Mesa RADV
+  (Radeon RX 9070 XT). Other GPUs and drivers are untested ([docs/TESTED_ON.md](docs/TESTED_ON.md)).
 - Plenty of RAM and time for the first build: the lift is tens of large C
-  files. `scripts/build.sh` defaults to 14 jobs inside an 80 GB memory scope;
-  lower `JOBS` (and `PORT_BUILD_MEM`) on a smaller machine.
+  files, and one chunk can take several GB of RAM to compile. `scripts/build.sh` defaults to 14 jobs inside an
+  80 GB memory scope; lower `JOBS` (and `PORT_BUILD_MEM`) on a smaller machine. On a 31 GB machine the Linux
+  build ran with `JOBS=6 PORT_BUILD_MEM=26G`.
 - Tools and libraries: `git`, `rsync`, CMake 3.20+, Ninja, Clang (clang-20 is
   preferred when installed), Python 3.10+, and the development packages of
   SDL2, the Vulkan headers and glslang. On Debian/Ubuntu, for example:
@@ -108,13 +114,30 @@ Technical notes: [docs/NOTES.md](docs/NOTES.md).
 
 ## Setup
 
-In short, once the dependencies are installed, the game files are in `disc/`
-and the firmware's `dev_flash` is in `./dev_flash` (or installed in RPCS3):
+### Quick start (the tested way)
+
+You need your own **decrypted** dump of the game (an `.iso` or a `PS3_GAME` folder), RPCS3 (to decrypt the
+executable and install the firmware) and the build tools from *Requirements*. Then, from a clone of this repository:
 
 ```sh
+scripts/doctor.sh                          # what is missing on this machine, and what is ready
+scripts/prepare_disc.sh /path/to/game.iso  # or a PS3_GAME folder: extracts, decrypts EBOOT, makes disc/
+# install the PS3 firmware in RPCS3 (File > Install Firmware), or put its dev_flash in ./dev_flash
 scripts/setup.sh && scripts/lift.sh && scripts/build.sh
 work/run.sh
 ```
+
+The lift and build take a while and a lot of RAM. A compiler or sysroot exported in your shell (`CC`, `CXX`,
+`LDFLAGS`, `CMAKE_SYSROOT`) can break the build: `scripts/doctor.sh` warns about it, and the *Immutable distros*
+section below covers Bazzite and similar systems. To play at 1440p and 60 fps see *Play* below. The numbered
+steps further down are the same thing in detail.
+
+Two other ways in exist, both **less tested** than the scripts:
+
+- **Setup wizard**: `scripts/setup_gui.py` (a page in your browser that runs the scripts above). Its server and a
+  real job were tested; the page itself has not been viewed in a browser yet.
+- **A single executable**: `scripts/build_gui_exe.sh` builds one. **No release has been published yet**, so there
+  is nothing to download: build it yourself, or run the wizard from a clone.
 
 **Shortcut for the game files.** `scripts/prepare_disc.sh <game.iso | PS3_GAME folder>`
 does step 2 below for you (extracts an ISO, decrypts `EBOOT.BIN` with RPCS3,
@@ -132,7 +155,7 @@ token, and installs no system packages: it tells you what is missing. Linux
 only for now. Its build settings (a local libraries folder, the clean build
 environment, the job count) are kept in `user/setup_gui.json`.
 
-**As one executable.** `scripts/build_gui_exe.sh` packs the wizard with
+**As one executable** (no release is published yet; you build it). `scripts/build_gui_exe.sh` packs the wizard with
 PyInstaller into a single file, `dist/MotorStormPR-Setup`, that needs no
 Python and no checkout: double-click it (or run it in a terminal) and it opens
 the wizard. It carries this repository's scripts and sources (tracked files
@@ -144,7 +167,7 @@ the wizard lists what is missing. The binary needs a glibc as new as the one
 it was built on, so build it on the oldest system you want to support (the
 release workflow does this on Ubuntu 22.04).
 
-**Releases.** `.github/workflows/release-gui.yml` builds the executable on
+**Releases** (none published yet). `.github/workflows/release-gui.yml` builds the executable on
 Ubuntu 22.04 (glibc 2.35, so it runs on that or any newer system), smoke-tests
 it (`scripts/smoke_gui_exe.sh`) and, when you push a tag such as `v1.0.0`,
 attaches it and its SHA-256 to a GitHub Release. Run by hand from the Actions
@@ -281,6 +304,19 @@ exported to the game.
 
 Use an SDL2-supported game controller. The game ignores SIGINT (Ctrl+C); stop
 it with SIGKILL, for example `pkill -KILL -x PacificRiftReco`.
+
+**At 1440p and 60 fps.** Either set them on the start screen (Settings: the resolution on the Display page, the
+frame rate on the Gameplay page, then Play), or in `user/settings.ini`:
+
+```ini
+[video]
+scale = 2        ; 1 = 720p, 2 = 1440p, 3 = 4K
+fps = 60         ; 30 (original) or 60
+```
+
+or for one run only, `work/run.sh PS3RECOMP_FPS=60 PS3RECOMP_RES_SCALE=2`. Both are read at start. **F10** shows the
+frame-rate overlay (the resolution reads `(2x)`); **F11** or **Alt+Enter** toggles fullscreen. The game paces
+itself at 59.94 Hz and presents with vsync, so a 60 Hz display is the cleanest match.
 
 ## Settings
 

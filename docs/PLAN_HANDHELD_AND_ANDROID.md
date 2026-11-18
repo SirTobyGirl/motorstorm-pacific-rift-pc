@@ -41,7 +41,8 @@ Rules for both:
 **[known]**, from `docs/NOTES.md` and the code:
 
 - The game is **CPU-bound**: PPU and SPU code run on the host CPU. Developed on
-  a 16-core Ryzen 9 5950X with an RTX 3090: 30 fps holds, and an opt-in 60 fps
+  a 16-core Ryzen 9 5950X with an RTX 3090 (the original author's machine; this fork's own
+  figures are in BASELINE.md): 30 fps holds, and an opt-in 60 fps
   mode holds 60 at 1440p in a race, dipping in the crash replay.
 - **Threads:** the game's 5-SPU SPURS instance is run on **6 host job lanes**
   (`SPURS_HOST_SPUS=6`, a deliberate deviation for speed), plus the PPU main
