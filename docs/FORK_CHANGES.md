@@ -106,3 +106,11 @@ Written with Claude (Anthropic) working in the repository at the request of the
 fork's owner (SirTobyGirl).
 Every commit carries a `Co-Authored-By: Claude` line, and the work was tested
 as described above rather than only read.
+
+## Decision: the setup program is the only supported install route
+
+The README documents one way in: the packaged setup program (`MotorStormPR-Setup`). The scripts it drives are
+unchanged and still in the repository; their by-hand use is described in [DEVELOPING.md](DEVELOPING.md), which is
+for working on the port. Known gaps before a stranger can use it unaided: no release is published yet; it cannot
+install system packages or build SDL2 and glslang for distributions that lack them (an idea: a "build the
+libraries" step); it needs RPCS3 installed; the page has never been viewed in a browser.

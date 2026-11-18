@@ -114,36 +114,24 @@ Technical notes: [docs/NOTES.md](docs/NOTES.md).
 
 ## Setup
 
-### Quick start (the tested way)
+**The setup program is the only supported way to install.** It is one file, `MotorStormPR-Setup`: you run it,
+it opens a page in your browser, and the page takes you from "I have the game" to "it is running", with buttons
+and a live log.
 
-You need your own **decrypted** dump of the game (an `.iso` or a `PS3_GAME` folder), RPCS3 (to decrypt the
-executable and install the firmware) and the build tools from *Requirements*. Then, from a clone of this repository:
+1. **Download** `MotorStormPR-Setup` from this repository's
+   [Releases](https://github.com/SirTobyGirl/motorstorm-pacific-rift-pc/releases) and make it executable
+   (`chmod +x MotorStormPR-Setup`). *No release is published yet: until there is one, build it yourself with
+   `scripts/build_gui_exe.sh` (see [docs/DEVELOPING.md](docs/DEVELOPING.md)).*
+2. **Run it** (double-click, or from a terminal). It unpacks itself into `~/MotorStormPR`.
+3. **Follow the page, top to bottom:** *Check this computer* (it lists anything missing and how to get it),
+   *Prepare game files* (your own dump: an `.iso` or a `PS3_GAME` folder), *Install firmware* (through RPCS3),
+   then *Do all steps*: it fetches the toolkit, lifts the game's code and builds it, which takes a long while and
+   a lot of RAM. Then *Play*.
 
-```sh
-scripts/doctor.sh                          # what is missing on this machine, and what is ready
-scripts/prepare_disc.sh /path/to/game.iso  # or a PS3_GAME folder: extracts, decrypts EBOOT, makes disc/
-# install the PS3 firmware in RPCS3 (File > Install Firmware), or put its dev_flash in ./dev_flash
-scripts/setup.sh && scripts/lift.sh && scripts/build.sh
-work/run.sh
-```
-
-The lift and build take a while and a lot of RAM. A compiler or sysroot exported in your shell (`CC`, `CXX`,
-`LDFLAGS`, `CMAKE_SYSROOT`) can break the build: `scripts/doctor.sh` warns about it, and the *Immutable distros*
-section below covers Bazzite and similar systems. To play at 1440p and 60 fps see *Play* below. The numbered
-steps further down are the same thing in detail.
-
-Two other ways in exist, both **less tested** than the scripts:
-
-- **Setup wizard**: `scripts/setup_gui.py` (a page in your browser that runs the scripts above). Its server and a
-  real job were tested; the page itself has not been viewed in a browser yet.
-- **A single executable**: `scripts/build_gui_exe.sh` builds one. **No release has been published yet**, so there
-  is nothing to download: build it yourself, or run the wizard from a clone.
-
-**Shortcut for the game files.** `scripts/prepare_disc.sh <game.iso | PS3_GAME folder>`
-does step 2 below for you (extracts an ISO, decrypts `EBOOT.BIN` with RPCS3,
-links the files, joins a split `ms2.psarc`, checks the checksums), and
-`scripts/doctor.sh` checks the machine and the checkout and says what is
-missing, at any point. The firmware is still installed in RPCS3 by hand.
+You supply the game, and the setup program supplies everything else. What it **cannot** do is install system
+packages (a compiler, CMake, SDL2 ...): the first card lists what is missing and you install it with your
+distribution's package manager. It also needs [RPCS3](https://rpcs3.net) for the firmware and to decrypt the
+game's executable. Nothing of the game or the firmware is included, and no decryption keys are included.
 
 **Setup wizard.** `scripts/setup_gui.py` opens a page in your browser that
 does all of this with buttons: it checks the computer, prepares the game from
@@ -167,14 +155,6 @@ the wizard lists what is missing. The binary needs a glibc as new as the one
 it was built on, so build it on the oldest system you want to support (the
 release workflow does this on Ubuntu 22.04).
 
-**Releases** (none published yet). `.github/workflows/release-gui.yml` builds the executable on
-Ubuntu 22.04 (glibc 2.35, so it runs on that or any newer system), smoke-tests
-it (`scripts/smoke_gui_exe.sh`) and, when you push a tag such as `v1.0.0`,
-attaches it and its SHA-256 to a GitHub Release. Run by hand from the Actions
-tab it only keeps the build as a downloadable artifact. Set the repository
-variable `UPDATE_REF` to choose the branch or tag the wizard's updates follow
-(default: the repository's default branch).
-
 **Updates.** The wizard's *Updates* card checks GitHub when you press *Check
 for updates* (it never checks by itself) and offers newer commits of the repo
 and branch the executable was built from (`UPDATE_REPO` / `UPDATE_REF` when
@@ -185,103 +165,7 @@ game, saves, settings, lift or build. A file you had changed is copied to
 `.update-backup/` first. It then tells you whether to lift or build again. A
 git checkout is not touched (use `git pull`).
 
-### 1. Get the code
-
-```sh
-git clone https://github.com/millennium-h4x0r/motorstorm-pacific-rift-pc.git motorstorm_pacific
-cd motorstorm_pacific
-scripts/install-hooks.sh    # optional: blocks commits of game files
-```
-
-### 2. Put the game in place
-
-`disc/` is git-ignored. The port expects:
-
-```
-disc/PS3_GAME/            PARAM.SFO, ICON0.PNG, ... (links into your dump are fine)
-disc/PS3_GAME/USRDIR/     the dump's USRDIR files, plus:
-    EBOOT.elf             your decrypted executable
-    ms2.psarc             one file; join a FAT32 dump's ms2.psarc.66600..66604 pieces in order
-```
-
-[docs/REQUIRED_FILES.md](docs/REQUIRED_FILES.md) has the exact commands
-(symlinks for everything, a copy of `EBOOT.elf`, and the `cat` that joins
-`ms2.psarc`), the expected checksum, and where the firmware's `dev_flash` is
-looked for. Files prepared on another machine can simply be copied over.
-
-### 3. Get and patch the toolkit
-
-```sh
-scripts/setup.sh
-```
-
-This clones ps3recomp into `ps3recomp/` (its own git repository, ignored by
-this one), checks out the pinned commit (v0.18.0, `4e8f3ca8`), applies this
-port's changes from `work/patches/ps3recomp.patch`, clones Dear ImGui v1.91.5
-for the menu, and installs the toolkit's Python tools into `.venv/`. Set
-`PS3RECOMP_DIR=<dir>` to keep the toolkit elsewhere (every script honours it).
-
-### 4. Lift your executable
-
-```sh
-scripts/lift.sh                 # or: scripts/lift.sh path/to/EBOOT.elf
-```
-
-This translates the PPU code into `work/src/recomp/` and the SPU images into
-`work/port/spu/` (`work/tools/lift_spu.sh`). It then runs
-`work/tools/patch_lift.py`, which splices the port's hooks into the lifted
-code: the 60 fps timestep, the frame-time compensation and the camera-shake
-hooks. Both directories are git-ignored and must never be shared. After
-updating this repository, run `scripts/lift.sh` again, or at least
-`.venv/bin/python work/tools/patch_lift.py` (it is idempotent and fails
-loudly if the lifted code is not what it expects).
-
-### 5. Build
-
-```sh
-scripts/build.sh                # -> work/port/build/PacificRiftRecomp
-```
-
-This configures `work/port/CMakeLists.txt` with Ninja, a Release build and the
-Vulkan backend, and builds it. It accepts `JOBS=<n>`, `PORT_BUILD_MEM=<size>`,
-`BUILD_DIR=<dir>`, `SPU_DIR=<dir>`, `CC=`/`CXX=`. To run CMake yourself:
-
-```sh
-cmake -S work/port -B work/port/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-    -DPS3RECOMP_DIR="$PWD/ps3recomp" -DRECOMP_DIR="$PWD/work/src/recomp" \
-    -DSPU_DIR="$PWD/work/port/spu" -DPS3RECOMP_RSX_VULKAN=ON \
-    -DPython3_EXECUTABLE="$PWD/.venv/bin/python"
-cmake --build work/port/build
-```
-
-### Immutable distros (Bazzite, Fedora Atomic, SteamOS)
-
-The packages in *Requirements* cannot always be installed system-wide. Two
-things that worked on Bazzite:
-
-- **Build SDL2 and glslang into your home** and point CMake at them (SDL2
-  2.32.x and glslang 15.x were used; SDL2 needs a clean toolchain, see below):
-
-  ```sh
-  cmake -S SDL -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=$HOME/.local/ps3deps -DSDL_TEST=OFF
-  cmake --build build && cmake --install build      # likewise for glslang (-DENABLE_OPT=OFF -DBUILD_EXTERNAL=OFF)
-  export CMAKE_PREFIX_PATH=$HOME/.local/ps3deps
-  export PKG_CONFIG_PATH=$HOME/.local/ps3deps/lib64/pkgconfig
-  export LD_LIBRARY_PATH=$HOME/.local/ps3deps/lib64        # when running
-  ```
-
-- **Build with a clean environment.** A compiler or sysroot exported in the
-  shell (`CC`, `CXX`, `LDFLAGS`, `CMAKE_SYSROOT`, as some SDK or toolchain
-  setups do) is picked up by CMake and can fail with link errors such as an
-  undefined `__isoc23_strtol`. `scripts/doctor.sh` warns when they are set;
-  build with `env -u CC -u CXX -u LDFLAGS -u CMAKE_SYSROOT scripts/build.sh`.
-
-- **RPCS3 as a Flatpak** (`net.rpcs3.RPCS3`) keeps its firmware under
-  `~/.var/app/net.rpcs3.RPCS3/config/rpcs3/dev_flash`. Run the game with
-  `PS3_DEV_FLASH` set to that folder if `work/run.sh` does not find it.
-
-### 6. Play
+### Play
 
 ```sh
 work/run.sh
