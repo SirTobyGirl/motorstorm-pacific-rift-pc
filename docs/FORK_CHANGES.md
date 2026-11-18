@@ -20,6 +20,8 @@ from the author's `main` at `b89c73e`.
 
 `feature/gui-executable` is layers 1-5 plus this file.
 
+**To pick the project up again, start with [CONTINUE.md](CONTINUE.md)** (where it stands and the next step).
+
 **`linux-fork` is this fork's main line:** layers 1-5, then the Linux-only
 declaration (below), then [the roadmap](ROADMAP.md) (current goals: stable
 performance, then enhanced frame rate, resolution and detail) and the deferred
