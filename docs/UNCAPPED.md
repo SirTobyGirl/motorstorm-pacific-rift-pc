@@ -124,6 +124,32 @@ depth buffer and the 60 fps base rate should help. Not decisive: it needs a real
 4. Switch it with a setting (`PS3RECOMP_INTERP=1`), off by default; a quality gate: skip generating on scene cuts
    (large flow error) and fall back to repeating the frame.
 
+## Built: the interpolation presenter (experimental, `PS3RECOMP_INTERP=1`)
+
+A presenter thread in the Vulkan backend (`ps3recomp/libs/video/rsx_vk_interp.inc`, shaders in `vulkan/rsx_vk_interp*.comp`)
+produces **one picture per screen refresh**, not per game frame: each game frame is copied into a ring with a mip
+chain; per refresh the presenter takes the newest two frames and the time since the newest arrived, and shows them blended
+at that moment (phase 0 = older, 1 = newer). Per new pair (60 times a second, not per refresh) a GPU motion search runs:
+a pyramidal Lucas-Kanade solver, symmetric around the in-between frame, over four mip levels with four iterations each
+(gradients, a 9x9-window 2x2 solve, a 3x3 median); the warp reads both frames along the motion and falls back to the nearer
+frame where they disagree (`PS3RECOMP_INTERP_THR`, default 0.15). The game's logic and flip rate are untouched.
+
+**Measured** (this PC, 720p, 60 fps game, a 144 Hz screen):
+- It holds **143.9 screen frames a second from a 59.9 fps game**, mean phase 0.5 (an even spread), with the motion
+  search running every game frame, and no Vulkan errors in a 50 s run.
+- Quality, from a built-in test (`PS3RECOMP_INTERP_TEST=1`, offscreen: predicts each frame from its two neighbours and
+  scores it against the real one, a two-step gap, so twice the motion of real use): motion warp **+0.9 to +1.1 dB over a
+  plain blend** on average (up to +2.5 on easier stretches), against OpenCV's DIS flow at +2.0 dB on comparable frames
+  (`work/tools/interp_proto_lk.py` and `interp_proto_blockmatch.py` are the Python prototypes the GPU version follows).
+  A first block-matching version gained only +0.6 dB, which is why it was replaced. The fallback threshold costs a little
+  average quality and lifts the worst frames from 15 dB to 21 dB.
+
+**Not yet judged by eye**: those are numbers, not a look at the picture on a real screen. Known limits: the HUD is warped
+with the rest; fast ground texture can warp stringily; a scene cut shows a blend for one frame; one extra game frame of
+latency; the game's motion blur makes PSNR understate quality.
+
+**Using it**: `work/run.sh PS3RECOMP_INTERP=1` (a window only; the 60 fps mode is the natural base, `PS3RECOMP_FPS=60`).
+
 ## Plan, in order
 
 1. **Make a frame cheaper** (compiler options are exhausted, see above): trace the main thread's frame (`FTRACE=<prefix> work/tools/bench.sh`, and
@@ -133,7 +159,6 @@ depth buffer and the 60 fps base rate should help. Not decisive: it needs a real
    vblank clock and the game's frame step (`f1` in `port_frame_dt`, and the frame timer's step) together. The
    60 fps work needed fixes for effects tuned at 30 Hz (camera shake, noise); expect more at higher rates, and
    physics tuned to 1/60 steps (riders were thrown off when steps alternated).
-3. **Optionally**, render extra frames between simulation steps (interpolation): the way to a smooth high rate
-   without changing the game's physics. A larger piece of work.
+3. **Interpolation** (built, experimental, see above): a smooth high rate without changing the game's physics.
 4. A **vsync-off / mailbox** present option once the above give frames to show (`VK_PRESENT_MODE_FIFO_KHR` is the
    only mode used today, `rsx_vulkan_backend.c`).

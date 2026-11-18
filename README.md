@@ -291,6 +291,7 @@ names with `VK` in them are the Vulkan backend's.
 | `PS3RECOMP_STRETCH=1` | Stretch the frame to the window (default: keep its shape, black bars) |
 | `PS3RECOMP_RES_SCALE=1..4` | Render-target scale: 2 = 1440p, 3 = 4K |
 | `PS3RECOMP_FSR=1`, `PS3RECOMP_FSR_SHARPNESS=0..1` | Upscaling to the window's size: AMD FSR 1 |
+| `PS3RECOMP_INTERP=1` | **Experimental.** Frame interpolation for the window: one picture per screen refresh (for example 144 Hz), made on the GPU from the game's last two frames with a motion search, so a 60 fps game looks smooth on a faster screen. Costs GPU time and about one game frame of latency; the game's own logic stays at its normal rate. See [docs/UNCAPPED.md](docs/UNCAPPED.md) |
 | `PS3RECOMP_FPS=60` | 60 fps mode at correct game speed while it holds 60 (needs the `patch_lift.py` hooks) |
 | `PS3RECOMP_DT_MAX=2` | 60 fps mode: a late frame makes up the lost time (default 1, off: every frame is 1/60 s, so the game runs slightly slow below 60 fps; the catch-up makes the car lurch and riders fall) |
 | `PS3RECOMP_CAMERA_SHAKE=1` | Keep the game's camera shake (default: off, a steady camera at both 30 and 60 fps) |
