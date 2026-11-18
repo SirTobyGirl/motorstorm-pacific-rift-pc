@@ -29,6 +29,14 @@ including far-distance rendering**. Handhelds and Android are a later goal.
   it heated up. Details in [ANDROID.md](ANDROID.md); the machines everything was tested on are in
   [TESTED_ON.md](TESTED_ON.md).
 
+**Setup program (paused 2026-11-18, mid-way)**: the README now documents only the packaged setup program.
+Added and pushed: a "Build SDL2 and glslang here" step (`scripts/build_libs.sh`, tested from scratch), RPCS3
+detection with a "point me to it" field (`scripts/find_rpcs3.sh`), and a dump inspector that says what the game
+files need before preparing (`scripts/inspect_disc.sh`) plus reuse of an earlier ISO extraction. Next, in order:
+(1) open the page in a browser and click through every card (its script has never run: no JavaScript engine on
+the machine), (2) a full clean run from the executable in an empty folder, (3) publish a first release (the owner
+must say yes), (4) the decrypt step through the finder on a real dump.
+
 **Not done**
 - Nothing yet improves what you *see* on Linux. No quality improvement has been started.
 - The wizard and executable have never been viewed in a browser; the wizard's firmware step is unverified.
