@@ -28,14 +28,21 @@ sha() { sha256sum "$1" | cut -c1-64; }
 if [ -f "$IN" ]; then
     case "${IN,,}" in *.iso) ;; *) die "$IN is a file but not an .iso" ;; esac
     mkdir -p "$WORK/extracted"
-    echo "extracting $(basename "$IN") to $WORK/extracted (about 13 GB)"
-    if command -v 7z >/dev/null; then
+    STAMP="$WORK/extracted/.from"; ID="$IN $(stat -c %s "$IN") $(stat -c %Y "$IN")"
+    if [ -f "$STAMP" ] && [ "$(cat "$STAMP")" = "$ID" ] && [ -f "$WORK/extracted/PS3_GAME/PARAM.SFO" ]; then
+        echo "this ISO was already extracted to $WORK/extracted: reusing it (delete that folder to extract again)"
+        SKIP_EXTRACT=1
+    fi
+    [ -n "${SKIP_EXTRACT:-}" ] || echo "extracting $(basename "$IN") to $WORK/extracted (about 13 GB)"
+    if [ -n "${SKIP_EXTRACT:-}" ]; then :
+    elif command -v 7z >/dev/null; then
         # 7z exits 2 on warnings (some images end with a header it dislikes);
         # the size checks below catch a real truncation.
         7z x -y -bso0 -bsp0 "$IN" -o"$WORK/extracted" >/dev/null || [ $? -eq 2 ] || die "7z failed"
     elif command -v bsdtar >/dev/null; then
         bsdtar -xf "$IN" -C "$WORK/extracted" || die "bsdtar failed"
     else die "need 7z or bsdtar to read an ISO"; fi
+    [ -n "${SKIP_EXTRACT:-}" ] || echo "$ID" > "$STAMP"
     SRC="$WORK/extracted/PS3_GAME"
 elif [ -d "$IN/PS3_GAME" ]; then SRC="$IN/PS3_GAME"
 elif [ "$(basename "$IN")" = PS3_GAME ]; then SRC="$IN"

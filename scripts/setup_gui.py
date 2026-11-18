@@ -370,6 +370,19 @@ def list_dir(path, kind):
     return {"path": path, "parent": os.path.dirname(path), "dirs": dirs, "files": files}
 
 
+def inspect_dump(path):
+    """What prepare will need to do for this dump (scripts/inspect_disc.sh): nothing is extracted."""
+    path = os.path.expanduser(path.strip())
+    if not path:
+        return {}
+    try:
+        out = subprocess.run(["bash", "scripts/inspect_disc.sh", path], cwd=ROOT, env=make_env(),
+                             capture_output=True, text=True, timeout=60).stdout
+    except Exception as e:
+        return {"NOTE": "could not look at it: %s" % e}
+    return dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
+
+
 def play():
     env = make_env()
     flash = find_flash()
@@ -537,6 +550,8 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, PAGE.replace("__TOKEN__", TOKEN), "text/html")
         if u.path == "/api/status":
             return self._send(200, run_status())
+        if u.path == "/api/inspect":
+            return self._send(200, inspect_dump((q.get("path") or [""])[0]))
         if u.path == "/api/log":
             return self._send(200, JOB.snapshot(int((q.get("since") or ["0"])[0] or 0)))
         if u.path == "/api/ls":
@@ -624,6 +639,7 @@ dialog::backdrop{background:#0008}#ls{max-height:50vh;overflow:auto;border:1px s
 <div class="card"><h2>2. Your game <span id="b1" class="badge mut">…</span></h2>
  <small>Pick your decrypted game ISO, or a folder holding PS3_GAME. It must be BCES-00129 (Europe) 01.00. RPCS3 is used to decrypt the executable.</small>
  <div class="row"><input id="gamepath" type="text" placeholder="/path/to/game.iso or folder"><button data-pick="gamepath" data-kind="iso">Browse…</button></div>
+ <div id="gameinfo" class="mut"></div>
  <div class="row"><button class="pri" id="prepare">Prepare game files</button></div></div>
 
 <div class="card"><h2>3. Firmware <span id="b2" class="badge mut">…</span></h2>
@@ -686,6 +702,10 @@ $("updcheck").onclick=async()=>{await saveCfg();const o=$("updout");o.className=
  catch(e){o.className="bad";o.textContent="Could not check: "+e.message}};
 $("updgo").onclick=async()=>{if(!confirm("Update the port's scripts and sources in this folder? Files you changed are saved first."))return;const o=$("updout");o.textContent="Updating…";
  try{const j=await post("/api/update/apply",{});o.className="ok";o.textContent=j.message;$("updgo").hidden=true;refresh()}catch(e){o.className="bad";o.textContent="Update failed: "+e.message}};
+async function inspect(){const p=$("gamepath").value.trim(),o=$("gameinfo");if(!p){o.textContent="";return}
+ try{const j=await api("/api/inspect?path="+encodeURIComponent(p));o.className=(j.EBOOT=="elf_ok"||j.EBOOT=="bin_sce")?"ok":"bad";
+  o.textContent=(j.NOTE||"")+(j.NEED_RPCS3=="yes"&&st&&st.rpcs3&&st.rpcs3.RPCS3_KIND=="none"?" RPCS3 was not found: see step 3.":"")}catch(e){o.textContent=""}}
+$("gamepath").addEventListener("change",inspect);
 $("prepare").onclick=()=>run("prepare",{path:$("gamepath").value});
 $("firmware").onclick=()=>run("firmware",{path:$("puppath").value});
 ["libs","setup","lift","build"].forEach(s=>$(s).onclick=()=>run(s));
@@ -707,9 +727,9 @@ async function poll(){
 let pick=null;
 async function ls(p){const j=await api("/api/ls?kind="+pick.kind+"&path="+encodeURIComponent(p||""));$("dpath").value=j.path;
  $("ls").innerHTML="";const add=(t,cb,c)=>{const d=document.createElement("div");d.textContent=t;d.className=c||"";d.onclick=cb;$("ls").appendChild(d)};
- add("↑ ..",()=>ls(j.parent));j.dirs.forEach(d=>add("📁 "+d,()=>ls(j.path+"/"+d)));j.files.forEach(f=>add("📄 "+f,()=>{$(pick.id).value=j.path+"/"+f;$("dlg").close()}))}
+ add("↑ ..",()=>ls(j.parent));j.dirs.forEach(d=>add("📁 "+d,()=>ls(j.path+"/"+d)));j.files.forEach(f=>add("📄 "+f,()=>{$(pick.id).value=j.path+"/"+f;$("dlg").close();$(pick.id).dispatchEvent(new Event("change"))}))}
 document.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=>{pick={id:b.dataset.pick,kind:b.dataset.kind};$("dtitle").textContent=pick.kind=="pup"?"Choose PS3UPDAT.PUP":pick.kind=="rpcs3"?"Choose the RPCS3 program, or its data folder":"Choose the game ISO, or a folder";$("dchoose").hidden=pick.kind=="pup";$("dlg").showModal();ls($(pick.id).value.replace(/\/[^/]*$/,"")||st&&st.home)});
-$("dgo").onclick=()=>ls($("dpath").value);$("dcancel").onclick=()=>$("dlg").close();$("dchoose").onclick=()=>{$(pick.id).value=$("dpath").value;$("dlg").close()};
+$("dgo").onclick=()=>ls($("dpath").value);$("dcancel").onclick=()=>$("dlg").close();$("dchoose").onclick=()=>{$(pick.id).value=$("dpath").value;$("dlg").close();$(pick.id).dispatchEvent(new Event("change"))};
 refresh();poll();setInterval(()=>{if(!running)refresh()},20000);
 </script></body></html>"""
 

@@ -128,6 +128,10 @@ and a live log.
    then *Do all steps*: it fetches the toolkit, lifts the game's code and builds it, which takes a long while and
    a lot of RAM. Then *Play*.
 
+When you pick your game, the page looks inside it (without extracting) and tells you what it will do: for
+example that the executable is already decrypted, so RPCS3 is not needed for the game, or that RPCS3 must decrypt
+it. An ISO that was extracted once is reused on later runs instead of being extracted again.
+
 You supply the game, and the setup program supplies everything else. What it **cannot** do is install system
 packages: the first card lists what is missing (a compiler, CMake, git ...) and you install it with your
 distribution's package manager. The exception is **SDL2, glslang and the Vulkan headers**: if they are missing, a
