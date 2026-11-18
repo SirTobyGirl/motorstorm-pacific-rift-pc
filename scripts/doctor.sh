@@ -65,13 +65,13 @@ if [ "$OS" = Linux ]; then
         return 1
     }
     if pc_ok sdl2 || in_prefix 'sdl2-config.cmake'; then ok "SDL2 development files"
-    else bad "SDL2 development files (libsdl2-dev / SDL2-devel, or set CMAKE_PREFIX_PATH)"; fi
-    if pc_ok vulkan || [ -f /usr/include/vulkan/vulkan.h ]; then ok "Vulkan headers"
+    else bad "SDL2 development files (libsdl2-dev / SDL2-devel, or run scripts/build_libs.sh)"; fi
+    if pc_ok vulkan || [ -f /usr/include/vulkan/vulkan.h ] || in_prefix 'vulkan.h'; then ok "Vulkan headers"
     else bad "Vulkan headers (libvulkan-dev / vulkan-headers)"; fi
     if command -v glslangValidator >/dev/null || in_prefix 'glslang-config.cmake' \
        || [ -f /usr/lib64/cmake/glslang/glslang-config.cmake ] || [ -f /usr/lib/cmake/glslang/glslang-config.cmake ]; then
         ok "glslang"
-    else bad "glslang (glslang-dev / glslang-devel, or set CMAKE_PREFIX_PATH)"; fi
+    else bad "glslang (glslang-dev / glslang-devel, or run scripts/build_libs.sh)"; fi
     [ -f /usr/include/png.h ] && ok "libpng (optional, start-screen backdrop)" || warn "libpng headers not found (optional)"
     command -v vulkaninfo >/dev/null && vulkaninfo --summary 2>/dev/null | grep -qi "deviceName" \
         && ok "a Vulkan device is present" || warn "could not confirm a Vulkan device (vulkaninfo missing or none found)"

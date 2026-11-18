@@ -129,9 +129,11 @@ and a live log.
    a lot of RAM. Then *Play*.
 
 You supply the game, and the setup program supplies everything else. What it **cannot** do is install system
-packages (a compiler, CMake, SDL2 ...): the first card lists what is missing and you install it with your
-distribution's package manager. It also needs [RPCS3](https://rpcs3.net) for the firmware and to decrypt the
-game's executable. Nothing of the game or the firmware is included, and no decryption keys are included.
+packages: the first card lists what is missing (a compiler, CMake, git ...) and you install it with your
+distribution's package manager. The exception is **SDL2, glslang and the Vulkan headers**: if they are missing, a
+*Build SDL2 and glslang here* button builds them from source into the setup folder (a few minutes, nothing
+system-wide), and *Do all steps* does it for you. It also needs [RPCS3](https://rpcs3.net) (the page links to it) for
+the firmware and to decrypt the game's executable. Nothing of the game or the firmware is included, and no decryption keys are included.
 
 **Setup wizard.** `scripts/setup_gui.py` opens a page in your browser that
 does all of this with buttons: it checks the computer, prepares the game from

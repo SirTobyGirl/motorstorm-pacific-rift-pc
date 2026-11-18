@@ -112,5 +112,5 @@ as described above rather than only read.
 The README documents one way in: the packaged setup program (`MotorStormPR-Setup`). The scripts it drives are
 unchanged and still in the repository; their by-hand use is described in [DEVELOPING.md](DEVELOPING.md), which is
 for working on the port. Known gaps before a stranger can use it unaided: no release is published yet; it cannot
-install system packages or build SDL2 and glslang for distributions that lack them (an idea: a "build the
-libraries" step); it needs RPCS3 installed; the page has never been viewed in a browser.
+install system packages (it can build SDL2, glslang and the Vulkan headers itself: `scripts/build_libs.sh`,
+tested from scratch in a scratch folder but not yet driven from the page); it needs RPCS3 installed (the page links to it); the page has never been viewed in a browser.

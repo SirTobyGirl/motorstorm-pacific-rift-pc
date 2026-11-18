@@ -151,6 +151,8 @@ def make_env():
         rest = [p for p in env.get("PATH", "").split(":") if p and p not in sysdirs]
         env["PATH"] = ":".join([d for d in sysdirs if os.path.isdir(d)] + rest)
     pre = cfg["prefix"].strip()
+    if not pre and os.path.isdir(os.path.join(ROOT, "libs", "include")):
+        pre = os.path.join(ROOT, "libs")        # made by the "Build libraries" step
     if pre:
         pre = os.path.expanduser(pre)
         env["CMAKE_PREFIX_PATH"] = pre + (":" + env["CMAKE_PREFIX_PATH"] if env.get("CMAKE_PREFIX_PATH") else "")
@@ -288,6 +290,9 @@ def steps(body):
         if not os.path.exists(path):
             raise ValueError("choose the game ISO or folder first")
         return "prepare", ["bash", "scripts/prepare_disc.sh", path], None
+    if step == "libs":
+        jobs, _ = auto_jobs()
+        return "libs", ["env", "JOBS=%s" % (cfg["jobs"] or max(2, jobs)), "bash", "scripts/build_libs.sh"], None
     if step == "setup":
         return "setup", ["bash", "scripts/setup.sh"], None
     if step == "lift":
@@ -594,7 +599,8 @@ dialog::backdrop{background:#0008}#ls{max-height:50vh;overflow:auto;border:1px s
 <p class="sub">Prepares your own game, then lifts, builds and starts the port. Nothing leaves this computer.</p>
 
 <div class="card"><h2>1. Check this computer <span id="b0" class="badge mut">…</span></h2><div id="doctor"></div>
- <div class="row"><button id="recheck">Check again</button></div>
+ <div class="row"><button id="recheck">Check again</button> <button id="libs" hidden>Build SDL2 and glslang here</button></div>
+ <small id="libsnote" hidden>SDL2, glslang or the Vulkan headers are missing. You can install your distribution's development packages, or let this build them into the setup folder (needs git, CMake and a compiler; a few minutes; installs nothing system-wide).</small>
  <details><summary>Build settings</summary>
   <div class="row"><label>Local libraries folder (SDL2, glslang) <small>optional</small></label><input id="prefix" type="text" placeholder="e.g. ~/.local/ps3deps"></div>
   <div class="row"><label><input id="clean" type="checkbox"> Build in a clean environment (ignore CC, CXX, LDFLAGS, CMAKE_SYSROOT from this shell)</label></div>
@@ -608,7 +614,7 @@ dialog::backdrop{background:#0008}#ls{max-height:50vh;overflow:auto;border:1px s
  <div class="row"><button class="pri" id="prepare">Prepare game files</button></div></div>
 
 <div class="card"><h2>3. Firmware <span id="b2" class="badge mut">…</span></h2>
- <small>The game needs the PS3 system firmware's files (fonts, MP3 decoder). Pick PS3UPDAT.PUP and RPCS3 installs it.</small>
+ <small>The game needs the PS3 system firmware's files (fonts, MP3 decoder). Pick PS3UPDAT.PUP and RPCS3 installs it. RPCS3 is also used to decrypt the game's executable. Not installed? <a href="https://rpcs3.net/download" target="_blank" rel="noopener noreferrer">Get RPCS3</a> (or <code>flatpak install flathub net.rpcs3.RPCS3</code>), then come back.</small>
  <div class="row"><input id="puppath" type="text" placeholder="/path/to/PS3UPDAT.PUP"><button data-pick="puppath" data-kind="pup">Browse…</button></div>
  <div class="row"><button class="pri" id="firmware">Install firmware</button></div></div>
 
@@ -648,6 +654,8 @@ async function refresh(){
  const f=sec("Firmware");badge("b2",lvl(f),lvl(f)=="ok"?"installed":"missing");
  const b=sec("Built");const built=b.items.length&&b.items.every(i=>i.level=="ok");badge("b3",built?"ok":"warn",built?"built":"not built");
  badge("b4",built&&lvl(g)=="ok"?"ok":"mut",built?"ready":"build first");
+ const needLibs=sec("Tools").items.some(i=>i.level=="MISSING"&&/SDL2|glslang|Vulkan headers/.test(i.text));
+ $("libs").hidden=$("libsnote").hidden=!needLibs;
  $("ver").textContent=st.version?"version "+st.version:"";
  if(!$("prefix").dataset.set){$("prefix").value=st.cfg.prefix;$("updrepo").value=st.cfg.update_repo;$("updref").value=st.cfg.update_ref;$("updrepo").placeholder=st.update[0]||"owner/repo";$("updref").placeholder=st.update[1]||"branch or tag";$("clean").checked=st.cfg.clean_env;$("jobs").value=st.cfg.jobs;$("jobsnote").textContent="auto: "+st.jobs;$("prefix").dataset.set=1}
 }
@@ -663,8 +671,8 @@ $("updgo").onclick=async()=>{if(!confirm("Update the port's scripts and sources 
  try{const j=await post("/api/update/apply",{});o.className="ok";o.textContent=j.message;$("updgo").hidden=true;refresh()}catch(e){o.className="bad";o.textContent="Update failed: "+e.message}};
 $("prepare").onclick=()=>run("prepare",{path:$("gamepath").value});
 $("firmware").onclick=()=>run("firmware",{path:$("puppath").value});
-["setup","lift","build"].forEach(s=>$(s).onclick=()=>run(s));
-$("all").onclick=()=>{chain=["setup","lift","build"];if($("gamepath").value&&lvl(sec("Game files"))!="ok")chain.unshift("prepare");next()};
+["libs","setup","lift","build"].forEach(s=>$(s).onclick=()=>run(s));
+$("all").onclick=()=>{chain=["setup","lift","build"];if(!$("libs").hidden)chain.unshift("libs");if($("gamepath").value&&lvl(sec("Game files"))!="ok")chain.unshift("prepare");next()};
 function next(){const s=chain.shift();if(!s)return;run(s,s=="prepare"?{path:$("gamepath").value}:{})}
 $("stop").onclick=()=>{chain=[];post("/api/stop")};
 $("play").onclick=()=>post("/api/play").catch(e=>alert(e.message));

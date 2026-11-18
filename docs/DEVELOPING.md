@@ -34,6 +34,8 @@ You need your own **decrypted** dump of the game, RPCS3 and the build tools from
 scripts/doctor.sh                          # what is missing on this machine, and what is ready
 scripts/prepare_disc.sh /path/to/game.iso  # or a PS3_GAME folder: extracts, decrypts EBOOT, makes disc/
 # install the PS3 firmware in RPCS3 (File > Install Firmware), or put its dev_flash in ./dev_flash
+scripts/build_libs.sh                       # only if SDL2, glslang or the Vulkan headers are missing -> ./libs
+export CMAKE_PREFIX_PATH=$PWD/libs         # (when you built them)
 scripts/setup.sh && scripts/lift.sh && scripts/build.sh
 work/run.sh
 ```
