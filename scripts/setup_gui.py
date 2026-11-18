@@ -27,7 +27,7 @@ CONFIG_PATH = ""
 # Variables a shell may export that make CMake pick up a foreign toolchain.
 LEAKY = ["CC", "CXX", "AR", "RANLIB", "LDFLAGS", "CMAKE_SYSROOT", "CMAKE_TOOLCHAIN_FILE", "LD_LIBRARY_PATH"]
 
-cfg = {"prefix": "", "clean_env": True, "jobs": "", "flash": "", "update_repo": "", "update_ref": ""}
+cfg = {"prefix": "", "clean_env": True, "jobs": "", "flash": "", "rpcs3": "", "update_repo": "", "update_ref": ""}
 
 
 def set_root(root):
@@ -150,6 +150,8 @@ def make_env():
         sysdirs = ["/usr/local/bin", "/usr/bin", "/bin"]
         rest = [p for p in env.get("PATH", "").split(":") if p and p not in sysdirs]
         env["PATH"] = ":".join([d for d in sysdirs if os.path.isdir(d)] + rest)
+    if cfg.get("rpcs3", "").strip():
+        env["RPCS3_LOCATION"] = os.path.expanduser(cfg["rpcs3"].strip())
     pre = cfg["prefix"].strip()
     if not pre and os.path.isdir(os.path.join(ROOT, "libs", "include")):
         pre = os.path.join(ROOT, "libs")        # made by the "Build libraries" step
@@ -243,8 +245,19 @@ class Job:
 JOB = Job()
 
 
+def rpcs3_info():
+    """What scripts/find_rpcs3.sh finds (honouring the location set on the page)."""
+    try:
+        out = subprocess.run(["bash", "scripts/find_rpcs3.sh"], cwd=ROOT, env=make_env(), capture_output=True,
+                             text=True, timeout=20).stdout
+    except Exception:
+        return {}
+    return dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
+
+
 def find_flash():
     for d in (cfg["flash"], os.environ.get("PS3_DEV_FLASH", ""), os.path.join(ROOT, "dev_flash"),
+              rpcs3_info().get("RPCS3_FLASH", ""),
               os.path.join(HOME, ".config/rpcs3/dev_flash"),
               os.path.join(HOME, ".var/app/net.rpcs3.RPCS3/config/rpcs3/dev_flash")):
         if d and os.path.isfile(os.path.join(d, "sys/external/flashMP3.pic")):
@@ -267,10 +280,12 @@ def fw_watcher():
     """RPCS3's --installfw can stay open after installing: stop it once the
     dev_flash has been complete and unchanged for 20 s."""
     flat = os.path.join(HOME, ".var/app/net.rpcs3.RPCS3/config/rpcs3/dev_flash")
+    data = rpcs3_info().get("RPCS3_DATA", "")
+    extra = os.path.join(data, "dev_flash") if data else flat
     last, stable = -1, 0
     while not JOB.done:
         time.sleep(5)
-        d = next((x for x in (flat, os.path.join(HOME, ".config/rpcs3/dev_flash")) if os.path.isfile(os.path.join(x, "sys/external/flashMP3.pic"))), "")
+        d = next((x for x in (extra, flat, os.path.join(HOME, ".config/rpcs3/dev_flash")) if os.path.isfile(os.path.join(x, "sys/external/flashMP3.pic"))), "")
         if not d:
             continue
         sz = tree_size(d)
@@ -303,11 +318,7 @@ def steps(body):
     if step == "firmware":
         if not os.path.isfile(path) or not path.upper().endswith(".PUP"):
             raise ValueError("choose the PS3UPDAT.PUP file first")
-        if shutil.which("rpcs3"):
-            return "firmware", ["rpcs3", "--installfw", path], fw_watcher
-        if shutil.which("flatpak"):
-            return "firmware", ["flatpak", "run", "--filesystem=" + os.path.dirname(path), "net.rpcs3.RPCS3", "--installfw", path], fw_watcher
-        raise ValueError("RPCS3 not found: install it (rpcs3.net, or flatpak install flathub net.rpcs3.RPCS3)")
+        return "firmware", ["bash", "scripts/find_rpcs3.sh", "run", "--installfw", path], fw_watcher
     raise ValueError("unknown step")
 
 
@@ -330,7 +341,7 @@ def run_status():
             cur["items"].append({"level": m.group(1), "text": m.group(2)})
         elif line.startswith("          ") and cur and cur["items"]:
             cur["items"][-1]["text"] += "\n" + line.strip()
-    return {"sections": sections, "flash": find_flash(), "jobs": auto_jobs()[0], "cfg": cfg,
+    return {"sections": sections, "flash": find_flash(), "rpcs3": rpcs3_info(), "jobs": auto_jobs()[0], "cfg": cfg,
             "home": HOME, "root": ROOT, "update": list(update_source()),
             "version": read_text(os.path.join(ROOT, ".bundle_version"))}
 
@@ -339,7 +350,7 @@ def list_dir(path, kind):
     path = os.path.abspath(os.path.expanduser(path or HOME))
     if not os.path.isdir(path):
         path = HOME
-    exts = {"iso": (".iso",), "pup": (".pup",)}.get(kind, ())
+    exts = {"iso": (".iso",), "pup": (".pup",), "rpcs3": ("rpcs3", ".appimage")}.get(kind, ())
     dirs, files = [], []
     try:
         for e in sorted(os.scandir(path), key=lambda e: e.name.lower()):
@@ -348,7 +359,9 @@ def list_dir(path, kind):
             try:
                 if e.is_dir():
                     dirs.append(e.name)
-                elif exts and e.name.lower().endswith(exts):
+                elif kind == "rpcs3" and any(x in e.name.lower() for x in exts):
+                    files.append(e.name)
+                elif kind != "rpcs3" and exts and e.name.lower().endswith(exts):
                     files.append(e.name)
             except OSError:
                 pass
@@ -548,7 +561,7 @@ class H(BaseHTTPRequestHandler):
         u = urlparse(self.path).path
         try:
             if u == "/api/config":
-                for k in ("prefix", "jobs", "flash", "update_repo", "update_ref"):
+                for k in ("prefix", "jobs", "flash", "rpcs3", "update_repo", "update_ref"):
                     if k in body:
                         cfg[k] = str(body[k]).strip()
                 if "clean_env" in body:
@@ -614,7 +627,10 @@ dialog::backdrop{background:#0008}#ls{max-height:50vh;overflow:auto;border:1px s
  <div class="row"><button class="pri" id="prepare">Prepare game files</button></div></div>
 
 <div class="card"><h2>3. Firmware <span id="b2" class="badge mut">…</span></h2>
- <small>The game needs the PS3 system firmware's files (fonts, MP3 decoder). Pick PS3UPDAT.PUP and RPCS3 installs it. RPCS3 is also used to decrypt the game's executable. Not installed? <a href="https://rpcs3.net/download" target="_blank" rel="noopener noreferrer">Get RPCS3</a> (or <code>flatpak install flathub net.rpcs3.RPCS3</code>), then come back.</small>
+ <small>The game needs the PS3 system firmware's files (fonts, MP3 decoder). Pick PS3UPDAT.PUP and RPCS3 installs it. RPCS3 is also used to decrypt the game's executable. </small>
+ <div id="rpcs3info" class="mut"></div>
+ <div class="row"><input id="rpcs3path" type="text" placeholder="optional: your RPCS3 program, or its data folder (the one with config.yml)"><button data-pick="rpcs3path" data-kind="rpcs3">Browse…</button></div>
+ <small>Already installed (native, Flatpak or AppImage) is found automatically. Not installed? <a href="https://rpcs3.net/download" target="_blank" rel="noopener noreferrer">Get RPCS3</a> (or <code>flatpak install flathub net.rpcs3.RPCS3</code>), then press <i>Check again</i>.</small>
  <div class="row"><input id="puppath" type="text" placeholder="/path/to/PS3UPDAT.PUP"><button data-pick="puppath" data-kind="pup">Browse…</button></div>
  <div class="row"><button class="pri" id="firmware">Install firmware</button></div></div>
 
@@ -654,14 +670,15 @@ async function refresh(){
  const f=sec("Firmware");badge("b2",lvl(f),lvl(f)=="ok"?"installed":"missing");
  const b=sec("Built");const built=b.items.length&&b.items.every(i=>i.level=="ok");badge("b3",built?"ok":"warn",built?"built":"not built");
  badge("b4",built&&lvl(g)=="ok"?"ok":"mut",built?"ready":"build first");
+ {const r=st.rpcs3||{};$("rpcs3info").textContent=(r.RPCS3_KIND&&r.RPCS3_KIND!="none"?"RPCS3 found ("+r.RPCS3_KIND+(r.RPCS3_BIN?": "+r.RPCS3_BIN:"")+")":"RPCS3 not found")+(r.RPCS3_DATA?" · data folder: "+r.RPCS3_DATA:"")+(r.RPCS3_FLASH?" · firmware already installed: "+r.RPCS3_FLASH:"")}
  const needLibs=sec("Tools").items.some(i=>i.level=="MISSING"&&/SDL2|glslang|Vulkan headers/.test(i.text));
  $("libs").hidden=$("libsnote").hidden=!needLibs;
  $("ver").textContent=st.version?"version "+st.version:"";
- if(!$("prefix").dataset.set){$("prefix").value=st.cfg.prefix;$("updrepo").value=st.cfg.update_repo;$("updref").value=st.cfg.update_ref;$("updrepo").placeholder=st.update[0]||"owner/repo";$("updref").placeholder=st.update[1]||"branch or tag";$("clean").checked=st.cfg.clean_env;$("jobs").value=st.cfg.jobs;$("jobsnote").textContent="auto: "+st.jobs;$("prefix").dataset.set=1}
+ if(!$("prefix").dataset.set){$("prefix").value=st.cfg.prefix;$("rpcs3path").value=st.cfg.rpcs3||"";$("updrepo").value=st.cfg.update_repo;$("updref").value=st.cfg.update_ref;$("updrepo").placeholder=st.update[0]||"owner/repo";$("updref").placeholder=st.update[1]||"branch or tag";$("clean").checked=st.cfg.clean_env;$("jobs").value=st.cfg.jobs;$("jobsnote").textContent="auto: "+st.jobs;$("prefix").dataset.set=1}
 }
 const esc=s=>s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
-async function saveCfg(){await post("/api/config",{prefix:$("prefix").value,clean_env:$("clean").checked,jobs:$("jobs").value,update_repo:$("updrepo").value,update_ref:$("updref").value})}
-["prefix","clean","jobs","updrepo","updref"].forEach(i=>$(i).addEventListener("change",async()=>{await saveCfg();refresh()}));
+async function saveCfg(){await post("/api/config",{prefix:$("prefix").value,rpcs3:$("rpcs3path").value,clean_env:$("clean").checked,jobs:$("jobs").value,update_repo:$("updrepo").value,update_ref:$("updref").value})}
+["prefix","rpcs3path","clean","jobs","updrepo","updref"].forEach(i=>$(i).addEventListener("change",async()=>{await saveCfg();refresh()}));
 async function run(step,extra){await saveCfg();try{await post("/api/run",{step,...extra});since=0;$("log").textContent=""}catch(e){alert(e.message);chain=[]}}
 $("recheck").onclick=refresh;
 $("updcheck").onclick=async()=>{await saveCfg();const o=$("updout");o.className="mut";o.textContent="Checking…";$("updgo").hidden=true;
@@ -691,7 +708,7 @@ let pick=null;
 async function ls(p){const j=await api("/api/ls?kind="+pick.kind+"&path="+encodeURIComponent(p||""));$("dpath").value=j.path;
  $("ls").innerHTML="";const add=(t,cb,c)=>{const d=document.createElement("div");d.textContent=t;d.className=c||"";d.onclick=cb;$("ls").appendChild(d)};
  add("↑ ..",()=>ls(j.parent));j.dirs.forEach(d=>add("📁 "+d,()=>ls(j.path+"/"+d)));j.files.forEach(f=>add("📄 "+f,()=>{$(pick.id).value=j.path+"/"+f;$("dlg").close()}))}
-document.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=>{pick={id:b.dataset.pick,kind:b.dataset.kind};$("dtitle").textContent=pick.kind=="pup"?"Choose PS3UPDAT.PUP":"Choose the game ISO, or a folder";$("dchoose").hidden=pick.kind=="pup";$("dlg").showModal();ls($(pick.id).value.replace(/\/[^/]*$/,"")||st&&st.home)});
+document.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=>{pick={id:b.dataset.pick,kind:b.dataset.kind};$("dtitle").textContent=pick.kind=="pup"?"Choose PS3UPDAT.PUP":pick.kind=="rpcs3"?"Choose the RPCS3 program, or its data folder":"Choose the game ISO, or a folder";$("dchoose").hidden=pick.kind=="pup";$("dlg").showModal();ls($(pick.id).value.replace(/\/[^/]*$/,"")||st&&st.home)});
 $("dgo").onclick=()=>ls($("dpath").value);$("dcancel").onclick=()=>$("dlg").close();$("dchoose").onclick=()=>{$(pick.id).value=$("dpath").value;$("dlg").close()};
 refresh();poll();setInterval(()=>{if(!running)refresh()},20000);
 </script></body></html>"""

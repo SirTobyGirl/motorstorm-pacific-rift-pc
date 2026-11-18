@@ -55,11 +55,8 @@ else
     mkdir -p "$WORK/decrypt"
     cp "$SRC/USRDIR/EBOOT.BIN" "$WORK/decrypt/EBOOT.BIN"
     rm -f "$WORK/decrypt/EBOOT.elf"
-    if command -v rpcs3 >/dev/null; then
-        rpcs3 --decrypt "$WORK/decrypt/EBOOT.BIN" >/dev/null 2>&1 || true
-    elif command -v flatpak >/dev/null && flatpak info net.rpcs3.RPCS3 >/dev/null 2>&1; then
-        flatpak run --filesystem="$WORK" net.rpcs3.RPCS3 --decrypt "$WORK/decrypt/EBOOT.BIN" >/dev/null 2>&1 || true
-    else die "RPCS3 not found (install it: https://rpcs3.net, or flatpak install flathub net.rpcs3.RPCS3)"; fi
+    "$ROOT/scripts/find_rpcs3.sh" run --decrypt "$WORK/decrypt/EBOOT.BIN" >/dev/null 2>&1 \
+        || die "RPCS3 not found or it failed (install it: https://rpcs3.net, or point to it: RPCS3_LOCATION=/path/to/rpcs3 or its data folder)"
     [ -f "$WORK/decrypt/EBOOT.elf" ] || die "RPCS3 did not produce EBOOT.elf"
     cp "$WORK/decrypt/EBOOT.elf" "$ELF"
 fi

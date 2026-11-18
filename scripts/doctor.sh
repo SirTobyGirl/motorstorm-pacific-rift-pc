@@ -43,6 +43,10 @@ if [ -n "$leak" ]; then
 else ok "no compiler variables set in the shell"; fi
 
 echo "Tools"
+eval "$("$ROOT/scripts/find_rpcs3.sh" 2>/dev/null | sed 's/^/R_/; s/=\(.*\)$/="\1"/')"
+if [ "${R_RPCS3_KIND:-none}" != none ]; then
+    ok "RPCS3 (${R_RPCS3_KIND}${R_RPCS3_BIN:+: $R_RPCS3_BIN}${R_RPCS3_DATA:+; data folder $R_RPCS3_DATA})"
+else warn "RPCS3 not found (it decrypts the game and installs the firmware: rpcs3.net, or point the setup program to it)"; fi
 need() { command -v "$1" >/dev/null && ok "$1" || bad "$1 ($2)"; }
 need git "git"
 need cmake "CMake 3.20 or newer"
@@ -94,7 +98,7 @@ else bad "disc/PS3_GAME/USRDIR/ms2.psarc (run scripts/prepare_disc.sh)"; fi
 
 echo "Firmware (dev_flash)"
 FLASH=""
-for d in "${PS3_DEV_FLASH:-}" "$ROOT/dev_flash" "$HOME/.config/rpcs3/dev_flash" \
+for d in "${PS3_DEV_FLASH:-}" "$ROOT/dev_flash" "${R_RPCS3_FLASH:-}" "$HOME/.config/rpcs3/dev_flash" \
          "$HOME/.var/app/net.rpcs3.RPCS3/config/rpcs3/dev_flash"; do
     [ -n "$d" ] && [ -f "$d/sys/external/flashMP3.pic" ] && { FLASH="$d"; break; }
 done

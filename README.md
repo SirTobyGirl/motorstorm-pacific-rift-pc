@@ -132,8 +132,10 @@ You supply the game, and the setup program supplies everything else. What it **c
 packages: the first card lists what is missing (a compiler, CMake, git ...) and you install it with your
 distribution's package manager. The exception is **SDL2, glslang and the Vulkan headers**: if they are missing, a
 *Build SDL2 and glslang here* button builds them from source into the setup folder (a few minutes, nothing
-system-wide), and *Do all steps* does it for you. It also needs [RPCS3](https://rpcs3.net) (the page links to it) for
-the firmware and to decrypt the game's executable. Nothing of the game or the firmware is included, and no decryption keys are included.
+system-wide), and *Do all steps* does it for you. It also needs [RPCS3](https://rpcs3.net) for
+the firmware and to decrypt the game's executable: an RPCS3 you already have (installed, Flatpak, AppImage or
+portable) and its data folder, with any firmware already installed in it, are found automatically, and you can
+point the page at a different program or data folder. If you have none, the page links to the download. Nothing of the game or the firmware is included, and no decryption keys are included.
 
 **Setup wizard.** `scripts/setup_gui.py` opens a page in your browser that
 does all of this with buttons: it checks the computer, prepares the game from
