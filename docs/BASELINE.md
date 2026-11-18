@@ -115,3 +115,12 @@ conversion catching a half-written frame and is harmless.
 - The remaining slow frames (about 4% at 60 fps) have not been traced to a cause; they only look like
   race events. A trace of a window that contains a collision against one that does not would show it.
 - Memory use and thread CPU beyond the two figures above were not recorded.
+
+
+## Cost of anisotropic filtering (2026-11-19)
+
+`PS3RECOMP_ANISO=16` against off, 1440p, 60 fps mode, async recording on, three interleaved rounds each (the machine in
+[TESTED_ON.md](TESTED_ON.md)): **58.5 fps** off, **57.1 fps** at 16x (rounds 57.5, 58.9, 59.1 against 56.3, 57.6, 57.4);
+median frame 16.2 against 16.6 ms, 90th percentile 23.1 against 24.4 ms. About 2.4%, all on the GPU (the CPU-side
+milliseconds per frame did not move). Far-ground sharpness (variance of the Laplacian, 90 captured frames of each):
+far band +101%, mid band +31%, near band +1%.

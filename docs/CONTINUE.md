@@ -52,27 +52,17 @@ must say yes), (4) the decrypt step through the finder on a real dump.
 The owner wants an uncapped frame rate. The first measurement (the engine tops out near 63 fps whatever the clock) and
 the plan are in [UNCAPPED.md](UNCAPPED.md); the first real work is making the main thread's frame cheaper.
 
-## Next step: anisotropic filtering
+## Done: anisotropic filtering (2026-11-19)
 
-The Vulkan renderer has **no anisotropic filtering** and ignores the texture **LOD bias** (a comment at
-`rsx_vulkan_backend.c` says so). The D3D12 backend in the same toolkit already maps the game's own value.
-This is the smallest change that visibly sharpens roads and ground at a distance.
+Added to the Vulkan engine sampler (`vk_eng_sampler`): the game's own request (`TEXTURE_CONTROL0` bits [6:4], decoded in
+`rsx_draw_engine.c` into the new `max_aniso` field) is honoured, and `PS3RECOMP_ANISO` / `aniso` in `settings.ini` / the
+menu's *Texture filtering* sets a minimum of 2, 4, 8 or 16 for every mip-mapped, linearly filtered texture. The
+`samplerAnisotropy` device feature is enabled when present. `PS3RECOMP_LOD_BIAS` adds a bias offset. Measured at 1440p
+(captured race frames): far-ground sharpness +101%, mid ground +31%, near ground unchanged (+1%, the control); cost
+about 2.4% (58.5 to 57.1 fps, three interleaved rounds, 60 fps mode), all GPU. Not done: applying the game's own LOD
+bias, an LOD-bias menu entry, and checking what anisotropy the game itself requests (it may request none).
 
-1. In `ps3recomp/libs/video/rsx_vulkan_backend.c` the guest sampler is built at about line 1111
-   (`VkSamplerCreateInfo sci`, `mipmapMode` from the RSX filter bits). Add `anisotropyEnable` and
-   `maxAnisotropy`, taken from `TEXTURE_CONTROL0` bits [6:4] through the same table the D3D12 backend uses
-   (`rsx_d3d12_backend.c` near line 2138: `{1, 2, 4, 6, 8, 10, 12, 16}`, applied only when both min and mag
-   filters are linear). Enable the `samplerAnisotropy` device feature when creating the device.
-2. Add a user override (an environment variable and a `settings.ini` key), up to 16x, off by default
-   or matching the game's value, so the default look does not change unasked.
-3. Then the LOD bias (`FILTER` bits [12:0]), as a separate step.
-4. **Measure**: `BENCH_DUMP_EVERY=60 ROUNDS=3 work/tools/bench.sh PS3RECOMP_FPS=60 PS3RECOMP_RES_SCALE=2`
-   with and without, plus before-and-after screenshots of the same race moment. Record the cost in
-   BASELINE.md.
-5. Toolkit edits are made in `ps3recomp/`, then `scripts/make_patch.sh` regenerates
-   `work/patches/ps3recomp.patch`, which is what gets committed.
-
-After that, in the roadmap's order: sharper upscaling and the resolution gaps; a shader and pipeline
+Next, in the roadmap's order: sharper upscaling and the resolution gaps; a shader and pipeline
 pre-warm (the first race adds about 230 SPIR-V files; Vulkan pipelines are built on demand and the port
 keeps no pipeline cache); the far-distance investigation (the game, not the renderer, decides the
 distance, so it starts as a "where is it decided" spike).

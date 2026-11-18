@@ -118,13 +118,14 @@ safest first.
 
 These need no game-logic changes.
 
-- **Anisotropic filtering [known gap].** The Vulkan sampler code does not use
-  anisotropy at all. The D3D12 backend in the same toolkit already sets it from
+- **Anisotropic filtering: DONE (2026-11-19; see CONTINUE.md and BASELINE.md).** `PS3RECOMP_ANISO`,
+  `aniso` in `settings.ini` and a menu option; far-ground sharpness +101%, about 2% GPU cost at 1440p/60. Original note:
+  the Vulkan sampler code did not use anisotropy at all. The D3D12 backend in the same toolkit already sets it from
   the game's own texture register (`TEXTURE_CONTROL0`), so the mapping is known.
   Add the game's value, plus a user override up to 16x. The largest visible
   improvement for the least work: ground and road textures at a distance.
-- **Texture LOD bias [known gap].** The comment in the Vulkan backend says the
-  bias is not applied. Apply it, and offer a negative bias for sharper textures.
+- **Texture LOD bias [partly done].** The game's own bias is still not applied (unchanged behaviour); a user offset is
+  available (`PS3RECOMP_LOD_BIAS`, no menu entry yet). Applying the game's bias is not done.
 - **Anti-aliasing [known].** Every pipeline is single-sample today. Options, from
   cheapest: a post-process pass (FXAA or SMAA) on the final image. True MSAA is
   probably much harder **[assumed]**: the port reads some surfaces back into the
