@@ -75,11 +75,17 @@ saves 28 registers to the local store on entry and works with 1.0f constants and
 animation or skinning job). So the frame's latency is the job lanes' work, and the work is real, which makes
 **faster translated SPU code and cheaper DMA copies** the lever.
 
+## Tried: the translated SPU code at -O3 (no gain)
+
+The SPU job modules are built at `-O2` (`PORT_SPU_OPT`; the CMake Release default of -O3 is overridden by it). A full
+build with `-DPORT_SPU_OPT=-O3`, three interleaved rounds against the normal build (clock at 240 Hz so the 60 Hz cap
+hides nothing): 60.5 against 61.5 fps, pack 61.9 against 62.6, job lanes 7.47 against 7.27 ms of CPU per frame
+(not better, within noise). Compiler options are exhausted for both the PPU and SPU code.
+
 ## Next experiments (not done)
 
-- How the translated SPU code is built (`PORT_SPU_OPT` is `-O2`, `-march=x86-64-v3`): try `-O3`, and look at the
-  helpers (`spu_rotqby`, the local-store accessors) for byte-shuffle and aliasing costs. Measure on the hot function
-  above with a micro-benchmark before rebuilding the whole tree.
+- The translated SPU code's helpers (`spu_rotqby`, the local-store accessors): byte-shuffle and aliasing costs.
+  Measure on the hot function above with a micro-benchmark before rebuilding the whole tree.
 - The DMA path (`mfc_do_transfer` plus `memmove`): copy sizes and counts per frame, and whether copies that the
   host could avoid (the data is already in guest memory) are being made.
 
