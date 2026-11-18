@@ -86,6 +86,43 @@ What this shows:
   on the GPU, half resolution is the right lever; if not, the work belongs on the CPU side (how many job
   threads it runs on this chip's mix of fast and slow cores, the video and decompression work).
 
+### A second session with the owner watching (2026-11-18)
+
+**The race is not limited by the GPU.** With the backend profiler on, in a time trial (no opponents) at about
+20 fps (median frame 47 ms, 90th percentile about 73 ms), the thread that feeds the GPU was busy only 15 to 19% of
+wall-clock time (presenting 11 to 15% of it), and waiting for the GPU never appeared in the profile. So halving the
+render resolution would barely help on this handheld; the idea is dropped for now.
+
+**The CPU side.** A 12 s simpleperf sample of the time trial: the busiest thread was the game's audio, the PS3's
+firmware MP3 decoder (`flashMP3`) and an audio filter (`ms_dsp_filter`), running as translated SPU code (about 45%
+of that thread; the thread was busy, not obviously saturated). The six job lanes took 5 to 6% each. This does **not**
+prove audio is the bottleneck; the limit may be waiting between threads.
+
+**Opponents matter.** The earlier race with fewer opponents ran 16 to 24 fps; a full pack on a later run showed 8 to
+11 fps for the part that was recorded (that run was cut short, see below), so opponents (physics and AI work) are a
+large part of the cost.
+
+**Switching audio off does not work.** `PS3_NO_AUDIO=1` makes the audio library report "unavailable" so the game
+should take a silent path, but the game's job threads then wait for ever ("WAIT_SIGNAL") and it never leaves a black
+screen. This happens on the PC too (an early version of these notes said otherwise because blank frames were counted
+as a boot). `PS3_MUTE` only silences the output after decoding, so it cannot show what decoding costs.
+
+**The temperature guard was wrong, and was fixed.** Two runs were stopped by the watcher at 97 C. The per-core CPU
+sensors (`cpu-1-*`) spike by 30 C within seconds and fall as fast (90 C then 60 C seven seconds later, with the game
+stopped), and the device's own first throttle point for them is 108 C; the GPU's and one power-management sensor's
+is 95 C. The guard (`android_guard` in `scripts/android_session.sh`, used by `scripts/android_watch.sh`) now stops
+the game within `ANDROID_MARGIN_C` (default 3) of each sensor's own lowest trip point at or above 90 C, and names
+the sensor; `ANDROID_STOP_C=<C>` still gives one fixed limit. The watcher also follows a relaunch and records each
+launch (`monitor_launchN.csv`). In the time trial the hottest sensor held about 84 C, climbing slowly; the clocks
+stayed at their maximum and the GPU clock at 680 MHz throughout (no throttling seen). The "GPU load" column
+reads 0 for every sample: that counter does not work on this device.
+
+**Other apps change the readings.** An unrelated app running on the handheld at the same time (the owner was
+comparing) made the CPU sensors read 90 C or more with the game stopped. Close other apps for a run.
+
+**Next:** record a frame trace on the handheld (`PS3_FTRACE`, which does not change behaviour) to see which stage
+sets the frame time: the main game thread, the job lanes, or the render thread.
+
 **The device.** It reports itself as `AYN Thor` (build `Thor_V1.0.0.377_20260206`, platform `kalama`, SoC
 QCS8550) and has two screens, one 1080x1920 (the game's) and one 1080x1240.
 

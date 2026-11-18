@@ -16,14 +16,30 @@
 #   ANDROID_DISPLAY_ID   SurfaceFlinger display id for screenshots (default: the first one it lists)
 ANDROID_PKG=org.motorstormpr.rift
 ANDROID_DIR=/sdcard/Android/data/$ANDROID_PKG/files
+[ -n "${ANDROID_STOP_C:-}" ] && ANDROID_STOP_C_SET=1
 ANDROID_STOP_C="${ANDROID_STOP_C:-100}"
 ANDROID_SHOTS="${ANDROID_SHOTS:-$PWD/.build-android/shots}"
 mkdir -p "$ANDROID_SHOTS"
 
 android_hot() { adb shell 'for z in /sys/class/thermal/thermal_zone*; do cat $z/temp 2>/dev/null; done' | tr -d '\r' | sort -nr | head -1 | awk '{printf "%.0f", $1/1000}'; }
+# The guard stops the game when any sensor is within ANDROID_MARGIN_C (default 3) of its OWN first throttle
+# point (the lowest trip point at or above 90 C that the device publishes for it: about 108 C for the CPU
+# cores, 95 C for the GPU and one power-management sensor), because the sensors differ and the CPU cores'
+# spike by 30 C in seconds under load. Set ANDROID_STOP_C to use one fixed limit for every sensor instead.
+ANDROID_MARGIN_C="${ANDROID_MARGIN_C:-3}"
+android_zones() {   # lines: <temp mC> <first throttle trip mC> <zone name>
+    adb shell 'for z in /sys/class/thermal/thermal_zone*; do t=$(cat $z/temp 2>/dev/null) || continue; m=125000
+        for p in $z/trip_point_*_temp; do v=$(cat $p 2>/dev/null); [ -n "$v" ] && [ "$v" -ge 90000 ] && [ "$v" -lt "$m" ] && m=$v; done
+        echo "$t $m $(cat $z/type)"; done' 2>/dev/null | tr -d '\r'
+}
 android_guard() {
-    local t; t="$(android_hot)"
-    if [ "${t:-0}" -ge "$ANDROID_STOP_C" ]; then adb shell am force-stop "$ANDROID_PKG"; echo "!! $t C >= $ANDROID_STOP_C C: game stopped"; return 1; fi
+    local hit
+    if [ -n "${ANDROID_STOP_C_SET:-}" ]; then
+        hit="$(android_zones | awk -v lim="$ANDROID_STOP_C" '$1/1000>=lim {printf "%s %.0f C >= fixed limit %s C\n",$3,$1/1000,lim}' | head -1)"
+    else
+        hit="$(android_zones | awk -v mg="$ANDROID_MARGIN_C" '$1/1000>=($2/1000-mg) {printf "%s %.0f C (its first throttle point is %.0f C)\n",$3,$1/1000,$2/1000}' | head -1)"
+    fi
+    if [ -n "$hit" ]; then adb shell am force-stop "$ANDROID_PKG"; echo "!! $hit: game stopped"; return 1; fi
     return 0
 }
 android_cool() {
