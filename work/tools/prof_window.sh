@@ -27,10 +27,10 @@ wait $BENCH
   python3 "$ROOT/ps3recomp/tools/ftrace_report.py" "$P/trace_r1.txt" --frames 0 2>/dev/null | sed -n '/RSX \/ present/,/HLE import/p' | head -14
   if [ -s "$P/perf.data" ]; then
     echo; echo "== CPU by thread =="
-    perf report -i "$P/perf.data" --no-children --sort tid --percent-limit 2 --stdio 2>/dev/null | grep -E "^ +[0-9.]+%" | head -8
-    RSX="$(perf report -i "$P/perf.data" --no-children --sort tid,sym --stdio 2>/dev/null | grep -E "rsx_|vk_" | awk '{print $2}' | sort | uniq -c | sort -nr | head -1 | awk '{print $2}')"
+    perf report -i "$P/perf.data" -g none --no-children --sort pid --percent-limit 2 --stdio 2>/dev/null | grep -E "^ +[0-9.]+%" | head -8
+    RSX="$(perf report -i "$P/perf.data" -g none --no-children --sort pid,sym --stdio 2>/dev/null | grep -E "rsx_|vk_" | awk '{print $2}' | sort | uniq -c | sort -nr | head -1 | awk '{print $2}')"
     echo; echo "== RSX thread $RSX: top functions (percent of ALL samples) =="
-    perf report -i "$P/perf.data" --no-children --tid "${RSX%%:*}" --sort sym,dso --percent-limit 0.4 --stdio -g none 2>/dev/null | grep -E "^ +[0-9.]+%" | head -22 | cut -c1-150
+    perf report -i "$P/perf.data" -g none --no-children --tid "${RSX%%:*}" --sort sym,dso --percent-limit 0.4 --stdio  2>/dev/null | grep -E "^ +[0-9.]+%" | head -22 | cut -c1-150
   fi
 } > "$P/report.txt" 2>&1
 cat "$P/report.txt"
