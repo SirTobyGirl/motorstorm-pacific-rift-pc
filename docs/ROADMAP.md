@@ -47,7 +47,7 @@ They are proposals; step 1.1 replaces the guesses with measured numbers.
 
 ### Steps
 
-**1.1 Baseline.** Record how the current build behaves at the defaults, using
+**1.1 Baseline.** *(First pass done: see [BASELINE.md](BASELINE.md). Still to do: cold against warm shader cache, more tracks, memory.)* Record how the current build behaves at the defaults, using
 the tools already in `work/tools/`: `bench.sh` (fps, pack fps, frame-interval
 percentiles, CPU per thread), `fliplog.py` (a timestamp per presented frame),
 `finish_race.sh` (the soak) and `tsample` (per-thread CPU). Do it twice: once
