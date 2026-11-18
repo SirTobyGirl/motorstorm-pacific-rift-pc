@@ -22,16 +22,22 @@ including far-distance rendering**. Handhelds and Android are a later goal.
 - **Baseline measured** (docs/BASELINE.md): 29.9 fps at the defaults (steady, 90th-percentile frame equals
   the median); 58.8 fps at 1440p/60 fps (median 16.7 ms, 90th percentile 18.2 ms). The 60 fps "judder"
   first reported was the benchmark's own frame dumps; fixed with `BENCH_DUMP_EVERY=60`.
-- An Android experiment (branch `android-experiment`, **paused**): a private APK boots the game on an
-  AYN Thor to its first 3D scene at 30 fps, and found a shader inefficiency (see below). Details in
-  `docs/ANDROID.md` on that branch.
+- An Android experiment (branch `android-experiment`, paused for automated runs): a private APK boots the game
+  on an AYN Thor handheld (the device reports `AYN Thor` and has two screens; the owner calls it an Odin) to
+  its first 3D scene at a locked 30 fps, and found a shader inefficiency. The owner then played a race by
+  hand: about 16 fps for the first minute, then 20 to 24, with the fan at 100%; the frame rate did not fall as
+  it heated up. Details in [ANDROID.md](ANDROID.md); the machines everything was tested on are in
+  [TESTED_ON.md](TESTED_ON.md).
 
 **Not done**
 - Nothing yet improves what you *see* on Linux. No quality improvement has been started.
 - The wizard and executable have never been viewed in a browser; the wizard's firmware step is unverified.
 - Cold-versus-warm shader cache is not separated in the baseline; about 4% of 60 fps frames are still
   slow (clustered, cause not traced).
-- On the Android branch: the pad-file fix has never run on the phone; a race on the phone was never reached.
+- On the Android branch: the pad-file fix has never run on the handheld, and no race has been recorded with
+  the profiler. That recording (`scripts/android_watch.sh`, with `VK_BE_PROFILE=1` in the app's `env.txt`) is
+  the next Android step: it shows whether a race is limited by the GPU, which decides whether rendering at
+  half resolution is the right lever. It is not a setting yet (`PS3RECOMP_RES_SCALE` clamps at 1).
 
 ## Next step: anisotropic filtering
 
@@ -80,7 +86,7 @@ distance, so it starts as a "where is it decided" spike).
   use 3 parallel jobs on a 31 GB machine.
 - Do not use `pkill -f` with a pattern that appears in the command itself: it kills the shell.
 - Benchmarks include their own overhead: use `BENCH_DUMP_EVERY=60` for steady figures.
-- **Hardware:** do not run a phone or handheld hard for more than a short guarded test unless the owner
+- **Hardware:** do not run a handheld or phone hard for more than a short guarded test unless the owner
   can watch it (the Thor's GPU reaches its 95 C throttle point in about 75 s). `scripts/android_session.sh`
   has a hard temperature stop.
 - Be plain about what was tested and what was not; say so in the commit message.

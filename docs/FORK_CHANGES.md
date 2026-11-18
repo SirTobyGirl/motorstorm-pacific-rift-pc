@@ -20,7 +20,7 @@ from the author's `main` at `b89c73e`.
 
 `feature/gui-executable` is layers 1-5 plus this file.
 
-**To pick the project up again, start with [CONTINUE.md](CONTINUE.md)** (where it stands and the next step).
+**To pick the project up again, start with [CONTINUE.md](CONTINUE.md)** (where it stands and the next step). What everything was tested on, and what was not: [TESTED_ON.md](TESTED_ON.md).
 
 **`linux-fork` is this fork's main line:** layers 1-5, then the Linux-only
 declaration (below), then [the roadmap](ROADMAP.md) (current goals: stable
@@ -71,7 +71,7 @@ kept.
 
 The branch `android-experiment` builds a private arm64 APK of the port and ran it on an
 AYN Thor: the game boots, plays its intro and reaches its first 3D scene at 30 fps. Its
-notes (`docs/ANDROID.md` on that branch) record what the experiment showed and how to
+notes ([ANDROID.md](ANDROID.md); the code is on that branch) record what the experiment showed and how to
 resume. The branch is **not** merged here because it carries a shader change that
 alters output on every platform and has not been checked in a race. Nothing from it is
 needed for the Linux build.

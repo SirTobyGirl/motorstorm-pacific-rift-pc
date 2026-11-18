@@ -12,6 +12,15 @@
 
 <p align="center"><img src="docs/screenshots/cascade-falls-start.jpg" width="900" alt="GO at Cascade Falls: the player's monster truck behind a pack of bikes, ATVs and buggies on a jungle track, race HUD on"></p>
 
+> **About this fork.** A Linux-only fork of
+> [millennium-h4x0r/motorstorm-pacific-rift-pc](https://github.com/millennium-h4x0r/motorstorm-pacific-rift-pc).
+> The port itself is the original author's; this fork adds setup tooling around it, measurements and notes.
+> Start with [docs/FORK_CHANGES.md](docs/FORK_CHANGES.md) (what it adds, and how to take each piece),
+> [docs/BASELINE.md](docs/BASELINE.md) (measured frame times: 29.9 fps at the defaults and 58.8 fps at 1440p and
+> 60 fps, on the PC described in [docs/TESTED_ON.md](docs/TESTED_ON.md), which also lists what has not been
+> tested), [docs/ANDROID.md](docs/ANDROID.md) (an experiment: a private APK that boots the game on an AYN Thor
+> handheld; paused) and [docs/CONTINUE.md](docs/CONTINUE.md) (where the work stands and what comes next).
+
 **MotorStorm: Pacific Rift** (PS3, BCES-00129, version 01.00) running natively
 on Linux (x86-64), without an emulator. The
 game's code, PowerPC (PPU) and SPU, is translated to C ahead of time by static
