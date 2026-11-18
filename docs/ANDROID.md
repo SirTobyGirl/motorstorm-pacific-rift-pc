@@ -8,6 +8,55 @@ platform. This fork is otherwise Linux-only.
 > own device and never publish it or attach it to a release. The game's data is
 > not in it; you copy that over yourself.
 
+## Status: paused
+
+Work on this stopped in the middle of a supervised session, because the phone could
+not be watched while the game ran it hot. Nothing is running or left on the phone.
+What exists on this branch is complete and pushed; what is unfinished is listed
+below under "To resume".
+
+### What the experiment showed
+
+1. **The port runs on a phone.** Recompiled game code is architecture-independent
+   C++; only three small, Android-guarded fixes to the toolkit were needed
+   (a context switch for the fiber library, a spin-wait hint, thread affinity), plus
+   an SDL launcher and a shared-library target. The game booted, played its intro
+   movie and reached its first 3D scene, "Choose Your Driver", at a locked
+   **30 fps** (648 draws, CPU about 300 to 430%).
+2. **The first big cost was in shader code generation, not in the phone's speed.**
+   The translated shaders declared 96 registers per pixel and a mobile GPU compiler
+   kept them in scratch memory: 250 to 290 ms per frame. Using only the registers a
+   program needs took the intro from about 4 to about 16 fps. Something similar may
+   help any GPU whose compiler is weaker than a desktop one (integrated GPUs, a Steam
+   Deck); it has not been tried there.
+3. **A CPU profile alone pointed the wrong way.** The sampling profile showed busy
+   SPU threads and a "wasted" spinning core and suggested fixes that changed
+   nothing. The frame tracer, the backend profiler, a small standalone Vulkan probe
+   and A/B switches found the real cause. The order that worked: where does a frame
+   wait (tracer), is the platform's queue itself slow (probe), what changes if one
+   component is swapped for a trivial one (A/B), then read what that component emits.
+4. **Phone-specific traps** (all fixed or documented here): Android's libc has no
+   `makecontext`; a Vulkan swapchain with `preTransform = currentTransform` shows
+   sideways on a rotated screen; `adb push` cannot make nested folders under
+   `Android/data`; a pad file made by `adb` cannot be emptied by the game; lifted
+   chunks need about 7.5 GB each to compile.
+5. **Heat is the limit to watch.** About 75 s of play brings the hottest zone to
+   94 to 96 C, which is the GPU's first thermal mitigation point on this chip. Timings
+   taken at that point are partly throttled.
+
+### To resume
+
+- The pad-file change (`work/port/main.cpp`: the app creates `pad.txt` itself,
+  world-writable) compiles but has **not been run on the phone**. Until it is, scripted
+  input repeats one press for ever.
+- **In-race rendering is untested** with the shader change, on Linux and on the phone.
+  Look at a race (and compare with `PS3RECOMP_FP_ARRAYS=1`) before relying on it.
+- Next likely limits once the GPU side is fixed: the video decoder and the data
+  decompressor, each running as translated SPU code on one thread (see Profile below).
+- The audio-track stop spam (below) is uninvestigated.
+- Use `source scripts/android_session.sh` for any session: it stops the game at 100 C
+  and cools the phone between runs. **Only run it while the phone can be watched.**
+
 ## What works (tested on one device)
 
 Device: AYN Thor, Snapdragon 8 Gen 2 (QCS8550), Android 13, 11.5 GB RAM,

@@ -538,6 +538,7 @@ static char* s_argv_copy[64];
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_main.h>   /* renames main to SDL_main, which SDLActivity's Java side calls */
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <unistd.h>
 #endif
 
@@ -587,6 +588,13 @@ int main(int argc, char** argv)
                     if (*key) setenv(key, val, 1);
                 }
                 fclose(ef);
+            }
+            /* PAD_FILE (scripted input) is emptied by the game after each press. A file `adb push` made belongs to
+             * the shell user and the game could not empty it, so one press repeated for ever. Have the app make it,
+             * world-writable, so `adb shell "echo '0x4000 20' > pad.txt"` and the game can both write it. */
+            if (const char* pf = getenv("PAD_FILE")) {
+                int pfd = open(pf, O_CREAT | O_WRONLY | O_TRUNC, 0666);
+                if (pfd >= 0) { fchmod(pfd, 0666); close(pfd); }
             }
             s_and_argv[0] = (char*)"PacificRiftRecomp";
             s_and_argv[1] = s_and_elf;

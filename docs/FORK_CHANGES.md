@@ -65,11 +65,11 @@ This goes against the author's cross-platform design, which is why it is not
 part of the five layers: take layers 1-5 and skip it if you want macOS text
 kept.
 
-## Android experiment
+## Android experiment (paused)
 
 | Branch | What it does |
 |---|---|
-| `android-experiment` | On top of `linux-fork`: builds a private arm64 APK, with three Android-guarded fixes in the toolkit patch, an Android entry point and the scripts to build, copy the game over and monitor it. First run on an AYN Thor boots the intro at about 4 fps. See [ANDROID.md](ANDROID.md). Experimental: the Linux build is unchanged. |
+| `android-experiment` | On top of `linux-fork`: a private arm64 APK, with three Android-guarded fixes in the toolkit patch, an Android entry point and the scripts to build it, copy the game over, profile it and run it safely. The game boots, plays its intro and reaches its first 3D scene at 30 fps on an AYN Thor. It also carries a **shader fix that changes shader output on every platform** (it removes a 96-register-per-pixel array; `PS3RECOMP_FP_ARRAYS=1` restores it) which is **not** on `linux-fork` because it has not been checked in a race. Paused; see [ANDROID.md](ANDROID.md) for what was learned and how to resume. |
 
 `macos-metal` is the author's own branch, copied when the fork was made; it is
 not part of these changes.
