@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# CPU-profile the running game on the phone with simpleperf and print where the time goes.
+# CPU-profile the running game on the handheld with simpleperf and print where the time goes.
 #
 #   scripts/android_profile.sh [seconds=12]
 #
 # Needs the app running (start it first and let it reach the part you care about), the app
 # marked profileable (it is, in android/AndroidManifest.xml), and the UNSTRIPPED libmain.so
-# from the last scripts/build_android.sh in .build-android/build (the one on the phone is
+# from the last scripts/build_android.sh in .build-android/build (the one on the handheld is
 # stripped). Prints: CPU by thread, the hottest thread's top functions and its call chain.
 # The raw data stays in .build-android/profile/ for `simpleperf report` or the NDK's scripts.
 set -euo pipefail
@@ -25,7 +25,7 @@ echo "recording $SECS s ..."
 adb shell "rm -f /data/local/tmp/perf_cpu.data; simpleperf record --app $PKG --duration $SECS -f 2000 --call-graph fp -e cpu-clock -o /data/local/tmp/perf_cpu.data >/dev/null 2>&1"
 adb pull -q /data/local/tmp/perf_cpu.data "$OUT/cpu.data"; adb shell rm -f /data/local/tmp/perf_cpu.data
 
-# Symbols: the phone's libraries are stripped, so lay the unstripped ones out at the device's paths.
+# Symbols: the handheld's libraries are stripped, so lay the unstripped ones out at the device's paths.
 DEVLIB="$(adb shell pm path "$PKG" | tr -d '\r' | head -1 | sed 's#package:##; s#/base.apk##')/lib/arm64"
 rm -rf "$OUT/symfs"; mkdir -p "$OUT/symfs$DEVLIB"
 ln -s "$LIB" "$OUT/symfs$DEVLIB/libmain.so"

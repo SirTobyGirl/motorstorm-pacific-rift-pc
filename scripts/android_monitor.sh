@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Record the running game's resource use on the phone, then summarise it.
+# Record the running game's resource use on the handheld, then summarise it.
 #
 #   scripts/android_monitor.sh [seconds=120] [outfile=.build-android/monitor.csv]
 #
@@ -19,7 +19,7 @@ PID="$(adb shell pidof "$PKG" | tr -d '\r')"
 mkdir -p "$(dirname "$OUT")"
 echo "t,rss_mb,peak_mb,threads,cores_busy,cpu0,cpu1,cpu2,cpu3,cpu4,cpu5,cpu6,cpu7,gpu_busy_pct,gpu_mhz,hottest_c,hottest_zone,battery_pct,battery_c" > "$OUT"
 
-# One adb round trip per sample: everything is read by a small shell script on the phone.
+# One adb round trip per sample: everything is read by a small shell script on the handheld.
 read -r -d '' SAMPLE <<EOS || true
 p=/proc/$PID
 echo "RSS \$(grep VmRSS \$p/status | tr -s '[:space:]' ' ' | cut -d' ' -f2) \$(grep VmHWM \$p/status | tr -s '[:space:]' ' ' | cut -d' ' -f2) \$(grep Threads \$p/status | tr -s '[:space:]' ' ' | cut -d' ' -f2)"

@@ -1,7 +1,7 @@
 # Android (experiment)
 
 A private Android build of the port, first run on an **AYN Thor**. It is an
-experiment to see how the game uses a phone-class chip, not a supported
+experiment to see how the game uses a handheld-class chip, not a supported
 platform. This fork is otherwise Linux-only.
 
 > **The APK contains code translated from your own game.** Build it for your
@@ -10,20 +10,21 @@ platform. This fork is otherwise Linux-only.
 
 ## Status: paused
 
-Work on this stopped in the middle of a supervised session, because the phone could
-not be watched while the game ran it hot. Nothing is running or left on the phone.
+Automated work on this stopped in the middle of a supervised session, because the handheld could
+not be watched while the game ran it hot. Nothing is running or left on the handheld. The owner has
+since played a race by hand (below).
 What exists on this branch is complete and pushed; what is unfinished is listed
 below under "To resume".
 
 ### What the experiment showed
 
-1. **The port runs on a phone.** Recompiled game code is architecture-independent
+1. **The port runs on a handheld.** Recompiled game code is architecture-independent
    C++; only three small, Android-guarded fixes to the toolkit were needed
    (a context switch for the fiber library, a spin-wait hint, thread affinity), plus
    an SDL launcher and a shared-library target. The game booted, played its intro
    movie and reached its first 3D scene, "Choose Your Driver", at a locked
    **30 fps** (648 draws, CPU about 300 to 430%).
-2. **The first big cost was in shader code generation, not in the phone's speed.**
+2. **The first big cost was in shader code generation, not in the handheld's speed.**
    The translated shaders declared 96 registers per pixel and a mobile GPU compiler
    kept them in scratch memory: 250 to 290 ms per frame. Using only the registers a
    program needs took the intro from about 4 to about 16 fps. Something similar may
@@ -35,7 +36,7 @@ below under "To resume".
    and A/B switches found the real cause. The order that worked: where does a frame
    wait (tracer), is the platform's queue itself slow (probe), what changes if one
    component is swapped for a trivial one (A/B), then read what that component emits.
-4. **Phone-specific traps** (all fixed or documented here): Android's libc has no
+4. **Handheld-specific traps** (all fixed or documented here): Android's libc has no
    `makecontext`; a Vulkan swapchain with `preTransform = currentTransform` shows
    sideways on a rotated screen; `adb push` cannot make nested folders under
    `Android/data`; a pad file made by `adb` cannot be emptied by the game; lifted
@@ -47,15 +48,46 @@ below under "To resume".
 ### To resume
 
 - The pad-file change (`work/port/main.cpp`: the app creates `pad.txt` itself,
-  world-writable) compiles but has **not been run on the phone**. Until it is, scripted
+  world-writable) compiles but has **not been run on the handheld**. Until it is, scripted
   input repeats one press for ever.
-- **In-race rendering is untested** with the shader change, on Linux and on the phone.
+- **In-race rendering is untested** with the shader change, on Linux and on the handheld.
   Look at a race (and compare with `PS3RECOMP_FP_ARRAYS=1`) before relying on it.
 - Next likely limits once the GPU side is fixed: the video decoder and the data
   decompressor, each running as translated SPU code on one thread (see Profile below).
 - The audio-track stop spam (below) is uninvestigated.
 - Use `source scripts/android_session.sh` for any session: it stops the game at 100 C
-  and cools the phone between runs. **Only run it while the phone can be watched.**
+  and cools the handheld between runs. **Only run it while the handheld can be watched.**
+
+### A race played by hand on the handheld
+
+After the work above the owner played one Free-Play race on the handheld, with the fan at 100%.
+Their report: 15 to 20 fps, briefly 30; after about 3 minutes the handheld's own display read 80 C
+and they stopped. The game's frame log for that session (425 s, 9,052 frames) says:
+
+| Phase | Time | Frame rate | Median frame |
+|---|---|---|---|
+| menus | 0 to 76 s | 25 to 32 fps, mostly the locked 30 | 33.3 to 33.4 ms |
+| loading the race | 82 to 103 s | 12 to 13 fps, single frames up to 3.5 s | 34 to 52 ms |
+| racing, first minute | 103 to 153 s | about 16 fps | 53 to 57 ms |
+| racing, the rest | 153 to 425 s | 20 to 24 fps, peaks near 26 to 30 | 40 to 47 ms (90th percentile 55 to 70 ms) |
+
+What this shows:
+- **The frame rate did not fall as the handheld heated up.** The last five minutes were the steadiest, at
+  about 22 fps. So thermal throttling is not what limits it; something in the race is.
+- **Loading the race is its own problem**: 12 to 13 fps with multi-second single frames (pipelines and data
+  being built for the first time).
+- **Whether the race is limited by the GPU or the CPU is not yet known.** The idea of halving the render
+  resolution only helps if it is the GPU. It is also not a setting yet: `PS3RECOMP_RES_SCALE` is an integer
+  from 1 to 4 that multiplies the game's native 1280x720, and anything below 1 is clamped to 1. A half-size
+  mode means teaching every scaling hook (target sizes, scissors, readbacks, uploads, shadow lookups) to
+  divide with rounding. The next step is to record the backend profiler during a race
+  (`VK_BE_PROFILE=1`: the share of each frame the render thread spends waiting for the GPU) with
+  `scripts/android_watch.sh`, which also stops the game at a set temperature. If most of the frame is waiting
+  on the GPU, half resolution is the right lever; if not, the work belongs on the CPU side (how many job
+  threads it runs on this chip's mix of fast and slow cores, the video and decompression work).
+
+**The device.** It reports itself as `AYN Thor` (build `Thor_V1.0.0.377_20260206`, platform `kalama`, SoC
+QCS8550) and has two screens, one 1080x1920 (the game's) and one 1080x1240.
 
 ## What works (tested on one device)
 
@@ -89,7 +121,7 @@ stays alive.
 | | |
 |---|---|
 | Memory | 446 MB resident, 448 MB peak, 63 threads |
-| CPU | 1.6 of 8 cores busy on average; the busiest thread is at about 50% of one core; 546% of 800% of the whole phone idle |
+| CPU | 1.6 of 8 cores busy on average; the busiest thread is at about 50% of one core; 546% of 800% of the whole handheld idle |
 | Frame rate (before the shader fix) | **3.9 fps**, a steady 240 to 285 ms per frame |
 | Frame rate (after the shader fix) | **15.7 fps**, median 33.8 ms, 3.4 cores busy |
 | Heat | the hottest chip zone reached 95 C; battery 22 C |
@@ -100,7 +132,7 @@ tested and rejected: the frame time does not change when the vblank semaphore
 timeout (`GCM_SEMA_ACQUIRE_MS`) is 250 ms, 50 ms or off. Other candidates, not
 yet tested: the slow intro video decode on one thread (the notes say it is only
 1.0 to 1.4 times real time on a fast desktop CPU), thread wake-up latency across
-the phone's big and little cores, and slow scalar fall-backs in the arm64 SPU
+the handheld's big and little cores, and slow scalar fall-backs in the arm64 SPU
 helpers. A profile (`simpleperf`) is the next step.
 
 ## The actual cause: the translated shaders (found and fixed)
@@ -118,7 +150,7 @@ How it was found, in order (each step ruled something out):
 2. The backend profiler (`VK_BE_PROFILE=1`): binding targets, pipelines, constants
    and textures cost about 0 ms; `present` was 99% of the wall time.
 3. `android/tools/vkprobe.c` (a tiny Vulkan program run through `adb shell`)
-   measured the phone's queue: empty submit 0.43 ms, a 720p clear or blit 0.46 ms,
+   measured the handheld's queue: empty submit 0.43 ms, a 720p clear or blit 0.46 ms,
    a 16 MB copy 1.1 ms. The driver and queue are fast; the game's work is what is slow.
 4. Running with no window (no swapchain, compositor or rotation) was no faster
    (3.3 fps), so the display path is not the cause.
@@ -144,12 +176,12 @@ after. On Linux (same binary, new against old) the first 83 captured frames
 differ, but the old code differs from itself in the same way (135 of 226 identical
 old against old, against 125 of 224 new against old, first difference at about the
 same frame), so that is timing noise. **Not checked:** rendering inside a race, on
-Linux or on the phone. This change applies to every platform's shader output, so
+Linux or on the handheld. This change applies to every platform's shader output, so
 a race should be looked at before relying on it.
 
 ### Things tried that changed nothing
 
-Run-to-run noise on the phone is about 15%, so only larger effects count.
+Run-to-run noise on the handheld is about 15%, so only larger effects count.
 
 | Change | Result |
 |---|---|
@@ -166,7 +198,7 @@ Run-to-run noise on the phone is about 15%, so only larger effects count.
 With the game running, the hottest chip zone reaches 94 to 96 C within about 75
 seconds (it was 64 C with no window). Every test here was therefore kept to about
 75 seconds with a cool-down below 60 C before the next. Sustained play at those
-temperatures will make the phone throttle; check it before a long session.
+temperatures will make the handheld throttle; check it before a long session.
 
 ## Profile (simpleperf, 12 s and 8 s samples on the Thor)
 
@@ -180,7 +212,7 @@ temperatures will make the phone throttle; check it before a long session.
 `scripts/android_profile.sh` records and symbolizes this. Two phases:
 
 **Loading (the first minute or so).** One thread takes about half of all CPU
-samples, about 89% of a core, and the rest of the phone is idle. Its call chain
+samples, about 89% of a core, and the rest of the handheld is idle. Its call chain
 is `spu_pool_thread -> spu_run_lifted_job_abi -> ...` into one 38 KB lifted SPU
 program (image `cbf1b1a1`), 98.9% of it in one leaf function. The mix is quadword
 byte rotates and shifts, shuffles, loads and stores, with no single slow helper:
@@ -198,8 +230,8 @@ and the queue; not confirmed against the program's source.)
 | 26660 | 27% | **a busy-polling thread**: 55% in the kernel, 23% in `clock_gettime`, 5% in `sched_yield`; about half a core spent doing nothing useful (likely the frame clock, which the notes say polls every 1 ms) |
 | 26725 | 13% | the audio mixer's MultiStream DSP plug-ins |
 
-So the game is not slow because the phone is overloaded: no thread is saturated
-and most of the phone is idle. It is slow because the work is serial and the lifted
+So the game is not slow because the handheld is overloaded: no thread is saturated
+and most of the handheld is idle. It is slow because the work is serial and the lifted
 SPU code is slow per instruction on one core, and (separately) a thread wastes a
 core polling. Candidate fixes, in the order I would try them:
 
@@ -209,7 +241,7 @@ core polling. Candidate fixes, in the order I would try them:
    exact native replacements of lifted SPU functions, `spu_fastpaths.c`). The
    request format has to be understood first. This would also shorten loads on
    Linux.
-3. **Make the lifted SPU code faster on arm64** (build flags for the phone's cores,
+3. **Make the lifted SPU code faster on arm64** (build flags for the handheld's cores,
    fewer round trips through the register file). Helps every SPU task, Bink included.
 
 Not yet known: how much of the frame time each of these buys back.
@@ -229,7 +261,7 @@ JDK 17+, and the lift from `scripts/lift.sh`:
 
 ```sh
 scripts/build_android.sh --install      # build, package, sign, adb install
-scripts/android_push.sh                 # copy the game and the firmware files to the phone
+scripts/android_push.sh                 # copy the game and the firmware files to the handheld
 ```
 
 The build needs about 22 GB of RAM at the default of 3 parallel jobs (each

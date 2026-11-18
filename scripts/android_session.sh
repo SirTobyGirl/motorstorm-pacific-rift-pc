@@ -1,13 +1,13 @@
-# Helpers for a SUPERVISED session with the game on an Android phone. Source it; do not run it.
+# Helpers for a SUPERVISED session with the game on an Android handheld. Source it; do not run it.
 #
 #   source scripts/android_session.sh
-#   android_cool                         # wait until the phone is below 60 C
+#   android_cool                         # wait until the handheld is below 60 C
 #   android_env 'PS3_SKIP_START=1\nPAD_FILE=pad.txt\n'   # the app's env.txt
 #   android_launch; sleep 60; android_guard && android_stat
 #   android_press 0x0008 20              # Start (masks: work/tools/pad.sh); needs PAD_FILE=pad.txt in env.txt
 #   android_shot name                    # screenshot of the game's screen to .build-android/shots/name.png
 #
-# Only use this while you can watch the phone. The game runs the CPU and GPU hard: on an AYN Thor the
+# Only use this while you can watch the handheld. The game runs the CPU and GPU hard: on an AYN Thor the
 # hottest zone reached 94 to 96 C within about 75 s, and the GPU zones' first thermal mitigation is at
 # 95 C (CPU cores 108 C, shutdown 125 C; `cat /sys/class/thermal/thermal_zone*/trip_point_*`). Every
 # android_guard call stops the game if any zone is at or above ANDROID_STOP_C (default 100). Keep runs

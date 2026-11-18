@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copy YOUR game to the phone's app storage (the APK contains none of it).
+# Copy YOUR game to the handheld's app storage (the APK contains none of it).
 #
 #   scripts/android_push.sh [--flash DIR]
 #
@@ -11,7 +11,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 command -v adb >/dev/null || { echo "adb not on PATH" >&2; exit 1; }
-adb get-state >/dev/null 2>&1 || { echo "no device (adb devices; accept the prompt on the phone)" >&2; exit 1; }
+adb get-state >/dev/null 2>&1 || { echo "no device (adb devices; accept the prompt on the handheld)" >&2; exit 1; }
 PKG=org.motorstormpr.rift
 adb shell pm path "$PKG" >/dev/null 2>&1 || { echo "$PKG is not installed: run scripts/build_android.sh --install first" >&2; exit 1; }
 DEST="/sdcard/Android/data/$PKG/files"
@@ -27,7 +27,7 @@ fi
 # Android 11+ does not let `adb push` make sub-folders below Android/data ("secure_mkdirs failed"), but
 # `adb shell mkdir -p` can. So make every folder first, then push each file into a folder that exists.
 # (adb shell reads stdin, so inside a read loop it needs </dev/null or it eats the list.)
-push_tree() {   # $1 = folder holding the tree, $2 = the tree's name, $3 = destination on the phone
+push_tree() {   # $1 = folder holding the tree, $2 = the tree's name, $3 = destination on the handheld
     ( cd "$1"
       find -L "$2" -type d | while IFS= read -r d; do adb shell mkdir -p "'$3/$d'" </dev/null; done
       find -L "$2" -type f | while IFS= read -r f; do
@@ -42,4 +42,4 @@ if [ -n "$FLASH" ]; then
     echo "pushing the firmware files from $FLASH"
     push_tree "$(dirname "$FLASH")" "$(basename "$FLASH")" "$DEST"
 else echo "no dev_flash found: fonts and the MP3 decoder will be missing"; fi
-echo "done. Start the app on the phone; its log is $DEST/run.log (adb pull it)."
+echo "done. Start the app on the handheld; its log is $DEST/run.log (adb pull it)."

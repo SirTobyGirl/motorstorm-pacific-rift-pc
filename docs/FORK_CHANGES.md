@@ -69,7 +69,7 @@ kept.
 
 | Branch | What it does |
 |---|---|
-| `android-experiment` | On top of `linux-fork`: a private arm64 APK, with three Android-guarded fixes in the toolkit patch, an Android entry point and the scripts to build it, copy the game over, profile it and run it safely. The game boots, plays its intro and reaches its first 3D scene at 30 fps on an AYN Thor. It also carries a **shader fix that changes shader output on every platform** (it removes a 96-register-per-pixel array; `PS3RECOMP_FP_ARRAYS=1` restores it) which is **not** on `linux-fork` because it has not been checked in a race. Paused; see [ANDROID.md](ANDROID.md) for what was learned and how to resume. |
+| `android-experiment` | On top of `linux-fork`: a private arm64 APK, with three Android-guarded fixes in the toolkit patch, an Android entry point and the scripts to build it, copy the game over, profile it and run it safely. The game boots, plays its intro and reaches its first 3D scene at 30 fps on an AYN Thor. It also carries a **shader fix that changes shader output on every platform** (it removes a 96-register-per-pixel array; `PS3RECOMP_FP_ARRAYS=1` restores it) which is **not** on `linux-fork` because it has not been checked in a race. Paused for automated runs; see [ANDROID.md](ANDROID.md) for what was learned and how to resume, and [TESTED_ON.md](TESTED_ON.md) for the two machines everything was tested on. |
 
 `macos-metal` is the author's own branch, copied when the fork was made; it is
 not part of these changes.

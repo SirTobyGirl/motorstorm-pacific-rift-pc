@@ -1,4 +1,4 @@
-/* vkprobe: how long does a Vulkan queue submit take to complete on this phone?
+/* vkprobe: how long does a Vulkan queue submit take to complete on this handheld?
  *
  * Runs from adb shell (no window, no game):
  *   adb push vkprobe /data/local/tmp/ && adb shell /data/local/tmp/vkprobe

@@ -5,7 +5,7 @@
 #
 # The APK contains code translated from your own copy of the game, so it is for
 # your own device only: never publish it or attach it to a release. The game's
-# data is not in it; copy that to the phone with scripts/android_push.sh.
+# data is not in it; copy that to the handheld with scripts/android_push.sh.
 #
 # Run scripts/setup.sh and scripts/lift.sh first (the lift is the same as for
 # the Linux build). Needs an Android SDK with an NDK, build-tools and a
