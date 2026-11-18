@@ -30,9 +30,30 @@ The **main game thread** (11 to 12 ms of CPU per frame, plus waiting on job thre
 object's two locks (`func_0094CC80`) and the physics (Havok) tasks. The render-command thread is not the limit on
 this PC (about 9 ms with async recording), and on the Android handheld it was ([ANDROID.md](ANDROID.md)).
 
+## Measured: where the main thread's time goes (60 fps, 720p, async recording, 10 s race window)
+
+`work/tools/prof_window.sh` (a perf profile plus a frame trace over the benchmark window). The main game thread is
+the busiest thread (about one core). Its profile is **flat**: hundreds of lifted game functions each under 0.3% of all
+samples. One stands out: `func_0050C818`, the job-counter spin, is about 12% of the main thread. The 60 fps frame
+also needs about 11 ms of CPU on the render-command thread, 9 ms on the recorder thread and 7 to 8 ms on each of three
+job threads.
+
+## Tried: compiler-level speed-ups (no gain)
+
+- **ThinLTO** (inlining across the 50 lifted chunks), three interleaved rounds each against the normal build, same
+  settings: main thread 11.63 ms against 11.73 ms of CPU per frame, render-command thread 10.17 against 10.73, frame
+  rate 58.5 against 58.0 (the frame rate is capped by the 60 Hz clock, so CPU per frame is the sensitive figure).
+  Within noise for the main thread: not worth a longer link.
+- **Profile-guided optimisation** is not possible with the compiler install here (no profiling runtime, and the profile
+  tool needs libraries that are missing). It would also need a profile made from the game's own code, which must not
+  be shared, so each user would have to make their own.
+- The lifted code is already built `-O3 -march=x86-64-v3` (the CMake build type is Release).
+
+So the main thread's cost is the game's own work plus its waiting, and the gain has to come from doing less of it.
+
 ## Plan, in order
 
-1. **Make a frame cheaper**: trace the main thread's frame (`FTRACE=<prefix> work/tools/bench.sh`, and
+1. **Make a frame cheaper** (compiler options are exhausted, see above): trace the main thread's frame (`FTRACE=<prefix> work/tools/bench.sh`, and
    `work/tools/prof_window.sh` for a CPU profile of the same window) and reduce the job-counter spin and the lock
    waits. Target: main thread well under 8 ms, so the engine can exceed 100 fps.
 2. **A faster game clock that keeps the speed right**: a rate setting above 60 (`PS3RECOMP_FPS=120`) that sets the
