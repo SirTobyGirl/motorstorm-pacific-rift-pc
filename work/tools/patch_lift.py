@@ -52,6 +52,43 @@ PATCHES = [
 ]
 
 
+# Insertions inside a function's body, for text that also occurs in other functions (the lifter emits some functions
+# twice, from an alternate entry): (function, anchor line, hook text). The anchor must occur exactly once inside the
+# function, and the hook goes right after it. Viewport quality (see port_vq_float in work/port/port_patches.cpp):
+# func_00360DD4 parses /scripts/viewportquality.xml; func_00360DD8 is its alternate entry and has the same code.
+def _vq(fn):
+    st = lambda reg, fp, off: ('{ float ftmp = (float)ctx->fpr[%d]; uint32_t tmp; memcpy(&tmp, &ftmp, 4); '
+                               'vm_write32(ctx->gpr[%d] + 0x%X, tmp); }\n' % (fp, reg, off))
+    call = lambda reg, off, kind: ('    { void port_vq_float(uint32_t, int); port_vq_float((uint32_t)(ctx->gpr[%d] + 0x%X), %d); } '
+                                   '/* patch_lift.py */\n' % (reg, off, kind))
+    return [(fn, st(11, 2, 0x0), call(11, 0x0, 0)),      # group LOD bias
+            (fn, st(12, 4, 0xC), call(12, 0xC, 1)),      # group cull threshold
+            (fn, st(29, 6, 0x10), call(29, 0x10, 2)),    # group shadow cull threshold
+            (fn, st(28, 10, 0x3C), call(28, 0x3C, 3))]   # shadow fade distance modifier
+FUNC_PATCHES = _vq('func_00360DD4') + _vq('func_00360DD8')
+
+
+def _patch_in_function(files):
+    for fn, anchor, hook in FUNC_PATCHES:
+        head = 'void %s(ppu_context* ctx) {' % fn
+        hits = [p for p in files if head in open(p, encoding='utf-8', errors='surrogateescape').read()]
+        if len(hits) != 1:
+            sys.exit(f'patch_lift: {fn}: expected its lifted entry once, found it in {len(hits)} files')
+        p = hits[0]
+        s = open(p, encoding='utf-8', errors='surrogateescape').read()
+        i = s.index(head)
+        j = s.index('\n}\n', i)
+        body = s[i:j]
+        if anchor + hook in body:
+            print(f'patch_lift: {fn}: already patched ({os.path.basename(p)})')
+            continue
+        if body.count(anchor) != 1:
+            sys.exit(f'patch_lift: {fn}: anchor appears {body.count(anchor)} times in the function ({anchor.strip()[:60]})')
+        body = body.replace(anchor, anchor + hook)
+        open(p, 'w', encoding='utf-8', errors='surrogateescape').write(s[:i] + body + s[j:])
+        print(f'patch_lift: {fn}: patched ({os.path.basename(p)})')
+
+
 def main():
     files = sorted(glob.glob(os.path.join(SRC, 'ppu_recomp_*.cpp')))
     if not files:
@@ -69,6 +106,7 @@ def main():
             sys.exit(f'patch_lift: {fn}: entry appears {s.count(anchor)} times in {p}')
         open(p, 'w', encoding='utf-8', errors='surrogateescape').write(s.replace(anchor, anchor + hook))
         print(f'patch_lift: {fn}: patched ({os.path.basename(p)})')
+    _patch_in_function(files)
 
 
 if __name__ == '__main__':

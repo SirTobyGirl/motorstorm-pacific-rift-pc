@@ -58,11 +58,43 @@ So the distance at which things are simplified or dropped is a handful of number
 3. **Is the game's dynamic resolution scaler running in the port?** It would lower the game's own render size under
    load. A short test: log the viewport size it asks for per frame.
 
-## Plan, if wanted
+## Built and measured (2026-11-19): `detail` / `PS3RECOMP_LOD_OFFSET`, `_CULL_SCALE`, `_SHADOW_DIST`
 
-1. Re-lift with a hook after the three float stores in the parser, reading three options (a world LOD bias offset, a
-   cull threshold scale and a shadow distance scale) from `settings.ini` and the environment, default no change.
-2. Try them at 30 fps first; compare captured frames far-ground and mid-ground, and measure cost with
-   `work/tools/bench.sh` and `prof_window.sh`.
-3. Stop condition (from the roadmap): if the visibility set (open question 1) or per-model data stops distance
-   increasing at all, document that and stop.
+`work/tools/patch_lift.py` splices `port_vq_float` (`work/port/port_patches.cpp`) after the four stores in both copies of the
+parser (a new per-function patch mode, since the stores' text also occurs in the alternate entry). It adjusts each value
+just parsed, for every group and every viewport tier; all three options default to no change. `settings.ini` has
+`detail = 0, 1 or 2` (the menu's *Distance detail*): enhanced is LOD offset -1, cull x0.5, shadows x1.5; maximum is -2,
+x0.3, x2. Either also turns on asynchronous recording. Applying the hook to an already lifted tree needs only
+`python3 work/tools/patch_lift.py` and a rebuild (no re-lift): about 5 minutes.
+
+**What it shows** (still moment at the start of a race, 1440p, each setting alone against the default):
+- **Shadow distance x2.5**: the largest change; shadows reach much farther (the sand around the bike, the slope).
+- **Cull threshold x0.1**: smaller objects stay in the picture farther out: more foliage detail across the mid-distance
+  and the horizon. So the baked visibility sets (open question 1) do **not** stop those small objects: it works.
+- **LOD offset -3**: subtle: finer plants at mid-distance.
+Judged from difference images (the race timer differs because the clock moved) and by eye; no measurable change in the
+large geometry. The effect is modest, not a different horizon.
+
+**Cost** (30 fps mode, 1440p, one round each; render-thread CPU per frame):
+
+| Setting | fps | render thread | main thread |
+|---|---|---|---|
+| default | 29.9 | 17.3 ms | 11.8 ms |
+| LOD offset -2 | 29.9 | 17.0 ms | 11.1 ms |
+| shadow x2 | 29.9 | 23.1 ms | 12.2 ms |
+| cull x0.3 | 29.8 | 28.2 ms | 13.7 ms |
+| all three (maximum) | **24.2** | 40.2 ms | 16.0 ms |
+| all three, async recording | **29.9** (90th percentile 33.4 ms) | 13.5 ms + 12.7 ms recorder | 14.1 ms |
+| enhanced-like (-2, x0.5, x2), async | 29.8 (90th percentile 33.4 ms) | 12.6 ms + 11.8 ms recorder | 13.3 ms |
+
+The detail settings roughly double or triple the draw calls per frame (about 3,500 to 10,600 with the strongest); at 30 fps
+the PC has the headroom once asynchronous recording splits the render thread, at 60 fps it does not (the main thread is
+already the limit, [UNCAPPED.md](UNCAPPED.md)). The LOD offset alone is free.
+
+## Still open
+
+- **Per-model LOD distances** in the model packs (`.rpk`) may limit large geometry regardless of this file.
+- **The game's dynamic resolution scaler** (`ViewportScaling` in the same file): is it running in the port? Not checked.
+- **Pop-in** was not looked for (needs motion): watch for objects appearing at a distance with the detail settings on.
+- Group-specific tuning (for example only the `world` group) is possible, since the structure address identifies the group;
+  not done: the options apply to every group.

@@ -24,6 +24,7 @@ void port_settings_defaults(port_settings* s)
     s->stretch = 0;
     s->fps = 30;
     s->aniso = 0;
+    s->detail = 0;
     s->camera_shake = 0;
     s->catch_up = 0;
     s->fps_counter = 1;
@@ -90,6 +91,7 @@ int port_settings_load(port_settings* s, const char* path)
             } else if (!strcmp(k, "stretch")) s->stretch = as_bool(v, s->stretch);
             else if (!strcmp(k, "fps")) { if (n == 30 || n == 60) s->fps = (int)n; }
             else if (!strcmp(k, "aniso")) { if (n == 0 || n == 2 || n == 4 || n == 8 || n == 16) s->aniso = (int)n; }
+            else if (!strcmp(k, "detail")) { if (n >= 0 && n <= 2) s->detail = (int)n; }
         } else if (!strcmp(section, "game")) {
             if (!strcmp(k, "camera_shake")) s->camera_shake = as_bool(v, s->camera_shake);
             else if (!strcmp(k, "catch_up")) s->catch_up = as_bool(v, s->catch_up);
@@ -143,6 +145,7 @@ int port_settings_save(const port_settings* s, const char* path)
             "stretch = %d        ; 0 = keep the 16:9 shape, 1 = fill the window (after a restart)\n"
             "fps = %d            ; 30 (original) or 60 (takes effect after a restart)\n"
             "aniso = %d          ; anisotropic filtering: 0 = as the game asks, or 2, 4, 8, 16 (sharper textures at a slant; after a restart)\n"
+            "detail = %d         ; distance detail: 0 = as the game ships, 1 = enhanced, 2 = maximum (costs CPU and render time; after a restart)\n"
             "\n[game]\n"
             "camera_shake = %d   ; the game's own camera shake (after a restart)\n"
             "catch_up = %d       ; 60 fps mode: a late frame makes up the lost time (after a restart)\n"
@@ -163,7 +166,7 @@ int port_settings_save(const port_settings* s, const char* path)
 #else
             s->upscaler ? "fsr" : "off",
 #endif
-            (double)s->fsr_sharpness, s->stretch ? 1 : 0, s->fps == 60 ? 60 : 30, s->aniso,
+            (double)s->fsr_sharpness, s->stretch ? 1 : 0, s->fps == 60 ? 60 : 30, s->aniso, s->detail,
             s->camera_shake ? 1 : 0, s->catch_up ? 1 : 0, s->fps_counter,
             s->skip_start ? 1 : 0, s->backup_on_play ? 1 : 0, s->keep_backups,
             s->game_dir, s->dev_flash, s->saves_dir);
@@ -175,7 +178,7 @@ static const struct { unsigned bit; const char* var; } k_pins[] = {
     { PORT_PIN_FULLSCREEN, "PS3RECOMP_VK_FULLSCREEN" }, { PORT_PIN_SCALE, "PS3RECOMP_RES_SCALE" },
     { PORT_PIN_UPSCALER, "PS3RECOMP_FSR" }, { PORT_PIN_STRETCH, "PS3RECOMP_STRETCH" },
     { PORT_PIN_FPS, "PS3RECOMP_FPS" }, { PORT_PIN_CAMERA_SHAKE, "PS3RECOMP_CAMERA_SHAKE" },
-    { PORT_PIN_ANISO, "PS3RECOMP_ANISO" },
+    { PORT_PIN_ANISO, "PS3RECOMP_ANISO" }, { PORT_PIN_DETAIL, "PS3RECOMP_LOD_OFFSET" },
     /* Not PS3_SKIP_START: Restart now sets it to go straight back into the
      * game, and the start screen's checkbox must stay usable after that. */
     { PORT_PIN_CATCH_UP, "PS3RECOMP_DT_MAX" },
@@ -244,6 +247,14 @@ void port_settings_export(const port_settings* s)
     if (s->stretch) export_var("PS3RECOMP_STRETCH", "1");
     if (s->fps == 60) export_var("PS3RECOMP_FPS", "60");
     if (s->aniso) { snprintf(b, sizeof b, "%d", s->aniso); export_var("PS3RECOMP_ANISO", b); }
+    if (s->detail > 0) {
+        /* The game's own level-of-detail bias, cull thresholds and shadow distance (port_vq_float, port_patches.cpp).
+         * More objects to draw: asynchronous recording splits the render thread's work over two cores so 30 fps holds. */
+        export_var("PS3RECOMP_LOD_OFFSET", s->detail >= 2 ? "-2" : "-1");
+        export_var("PS3RECOMP_CULL_SCALE", s->detail >= 2 ? "0.3" : "0.5");
+        export_var("PS3RECOMP_SHADOW_DIST", s->detail >= 2 ? "2" : "1.5");
+        export_var("VK_ASYNC_RECORD", "1");
+    }
     if (s->camera_shake) export_var("PS3RECOMP_CAMERA_SHAKE", "1");
     if (s->catch_up) export_var("PS3RECOMP_DT_MAX", "2");
     snprintf(b, sizeof b, "%.2f", (double)s->fsr_sharpness);
