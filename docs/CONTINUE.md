@@ -62,7 +62,8 @@ menu's *Texture filtering* sets a minimum of 2, 4, 8 or 16 for every mip-mapped,
 about 2.4% (58.5 to 57.1 fps, three interleaved rounds, 60 fps mode), all GPU. Not done: applying the game's own LOD
 bias, an LOD-bias menu entry, and checking what anisotropy the game itself requests (it may request none).
 
-Next, in the roadmap's order: sharper upscaling and the resolution gaps; a shader and pipeline
+The far-distance spike is done ([RENDER_DISTANCE.md](RENDER_DISTANCE.md)): the settings are data, overridable with a lift
+hook (a re-lift and rebuild), not yet built. Next, in the roadmap's order: sharper upscaling and the resolution gaps; a shader and pipeline
 pre-warm (the first race adds about 230 SPIR-V files; Vulkan pipelines are built on demand and the port
 keeps no pipeline cache); the far-distance investigation (the game, not the renderer, decides the
 distance, so it starts as a "where is it decided" spike).

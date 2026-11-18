@@ -140,6 +140,10 @@ after screenshots in the notes.
 
 ### 2.4 Far-distance rendering and level of detail
 
+**Spike done (2026-11-19): see [RENDER_DISTANCE.md](RENDER_DISTANCE.md).** The distance and detail settings are data
+(`/scripts/viewportquality.xml`), parsed by one function into floats a hook can change; a loose file cannot override
+them. Open: whether baked visibility sets also limit distance. The text below is the original plan.
+
 The hardest item, and the one with the least known. In a static recompilation
 the **game itself decides** how far it draws and which level of detail it uses:
 the port only draws what the game asks for. So pushing the distance out is not a
