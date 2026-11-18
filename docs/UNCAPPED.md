@@ -89,6 +89,41 @@ hides nothing): 60.5 against 61.5 fps, pack 61.9 against 62.6, job lanes 7.47 ag
 - The DMA path (`mfc_do_transfer` plus `memmove`): copy sizes and counts per frame, and whether copies that the
   host could avoid (the data is already in guest memory) are being made.
 
+## Feasibility of frame interpolation (offline test, 239 consecutive race frames, 720p)
+
+The idea: keep the game's logic at 60 steps a second and make the extra frames **from the finished picture, on the
+GPU**. The GPU is about 4% busy while the CPU is the limit, so extra GPU work is nearly free, and the game's physics
+and timing are untouched. `work/tools/interp_test.py` captures nothing itself: it takes the sequence from
+`work/tools/capture_race.sh` and predicts each frame from the two around it (a gap of two steps, twice the motion of a
+real 60 to 120 fps case, so a harsh test), scoring against the frame the game really drew:
+
+| method | mean PSNR | worst frame | 10th percentile |
+|---|---|---|---|
+| repeat the previous frame | 22.5 dB | 20.2 | 21.2 |
+| blend the two neighbours | 24.4 dB | 21.9 | 22.8 |
+| optical flow (OpenCV DIS), warp both neighbours | **26.5 dB** | 22.8 | 23.8 |
+| flow, both directions, best pixel pair | 25.7 dB | 22.5 | 23.3 |
+
+Looking at the pictures: the bike, the HUD and the scenery come out well; the ground (sand, fast-moving texture) shows
+stringy warping artifacts; the game's **motion blur** makes the real frame softer than its neighbours, so PSNR
+understates how good a sharper interpolated frame looks. The flow took 42 ms per frame on the CPU, which is irrelevant:
+a GPU compute version is the design.
+
+**Verdict**: promising but with visible artifacts on fast ground texture; the test is harsh, and the game's own
+depth buffer and the 60 fps base rate should help. Not decisive: it needs a real-time GPU prototype to judge.
+
+## Design sketch for the real thing (not started)
+
+1. At present time, keep the previous and current final pictures; run compute shaders (a coarse-to-fine block-matching
+   flow, then a warp of both pictures to the midpoint with a simple occlusion test) and present the generated frame at
+   half a frame's delay, then the real one. Display refresh sets the output rate (120 or 144 Hz).
+2. The game still flips at 60 Hz; the present path owns the extra presents (a mailbox or immediate mode, or FIFO at the
+   higher refresh), so latency grows by about one 60 Hz frame (as with every interpolator).
+3. The HUD is part of the picture; a first version warps it with the rest (it came out acceptably above). A better one
+   would exclude it if the game's UI pass can be told apart.
+4. Switch it with a setting (`PS3RECOMP_INTERP=1`), off by default; a quality gate: skip generating on scene cuts
+   (large flow error) and fall back to repeating the frame.
+
 ## Plan, in order
 
 1. **Make a frame cheaper** (compiler options are exhausted, see above): trace the main thread's frame (`FTRACE=<prefix> work/tools/bench.sh`, and
