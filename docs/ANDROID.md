@@ -120,8 +120,23 @@ reads 0 for every sample: that counter does not work on this device.
 **Other apps change the readings.** An unrelated app running on the handheld at the same time (the owner was
 comparing) made the CPU sensors read 90 C or more with the game stopped. Close other apps for a run.
 
-**Next:** record a frame trace on the handheld (`PS3_FTRACE`, which does not change behaviour) to see which stage
-sets the frame time: the main game thread, the job lanes, or the render thread.
+**What sets the frame time (frame trace, time trial, no profiler, 183 frames, median 50.7 ms):** one thread, the
+render-command (RSX) thread that works through the game's graphics commands and turns them into Vulkan calls. It
+was busy about 41 of 54 ms per frame (32 ms draining the command queue, 9 ms presenting), the main game thread was
+mostly idle waiting on it, and the real GPU wait was small. The same thread takes 18.9 ms of CPU per frame on the
+PC's Ryzen 7 5800X at 720p/30 fps, so it is the same cost on both and the handheld's slower cores make it the limit.
+Its own CPU profile on the PC is flat: about 55% our code (command parsing about 15%, hashing texture contents
+about 8%, descriptor updates about 7%, pipeline lookup about 3%), about 17% the GPU driver, about 22% not attributed.
+
+**A switch that splits that thread: `VK_ASYNC_RECORD=1`** moves Vulkan command recording onto a second thread. On the
+PC at 30 fps it takes the render-command thread from 18.9 to 9.0 ms of CPU per frame (the recorder thread takes
+7.4 ms), and frame times tighten (90th percentile 38.0 to 33.4 ms); the frame rate stays at the 30 fps cap because the
+PC is limited by the main thread. The port already turns it on in 60 fps mode. It is **expected to help on the
+handheld**, where this thread is the limit; this has not been measured there yet. To try it, put `VK_ASYNC_RECORD=1`
+in the app's `env.txt` and repeat the time trial.
+
+`work/tools/prof_window.sh` runs the whole analysis unattended on the PC: the standard race benchmark with a frame
+trace and a perf profile over the same window, then a report.
 
 **The device.** It reports itself as `AYN Thor` (build `Thor_V1.0.0.377_20260206`, platform `kalama`, SoC
 QCS8550) and has two screens, one 1080x1920 (the game's) and one 1080x1240.

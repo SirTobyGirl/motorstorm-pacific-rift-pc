@@ -45,4 +45,12 @@ if [ -n "$HOT" ]; then
     echo; echo "== hottest thread $HOT: call chain =="
     rep --tids "$HOT" --sort symbol -g caller --percent-limit 10 --max-stack 10 | sed -n '/__start_thread/,$p' | head -16 | cut -c1-170
 fi
+# The render-command (RSX) thread, found by its functions, whatever its rank: it paces the frame.
+RSX="$(rep --sort tid,symbol --percent-limit 0.02 | grep -E "rsx_|vk_" | awk '{print $2}' | sort | uniq -c | sort -nr | head -1 | awk '{print $2}')"
+if [ -n "$RSX" ]; then
+    echo; echo "== RSX (render-command) thread $RSX: top functions =="
+    rep --tids "$RSX" --sort symbol --percent-limit 0.8 | grep -E "^[0-9.]+%" | head -16 | cut -c1-170
+    echo; echo "== RSX thread $RSX: by library =="
+    rep --tids "$RSX" --sort dso --percent-limit 1 | grep -E "^[0-9.]+%" | head -6 | cut -c1-170
+fi
 echo; echo "data: $OUT/cpu.data"
