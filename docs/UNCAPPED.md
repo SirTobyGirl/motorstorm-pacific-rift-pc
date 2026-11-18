@@ -51,6 +51,38 @@ job threads.
 
 So the main thread's cost is the game's own work plus its waiting, and the gain has to come from doing less of it.
 
+## Measured: what the main thread waits for (trace of the same window, 578 frames)
+
+Of a 17 ms frame the main thread runs about 9 ms and **waits about 6.2 ms**. 4.0 ms of that (3.1 times a frame) is
+one place: the game's job-object barrier (`func_0094CC80`) taking two locks, whose lock function
+(`func_004B63F0`) spins about 125 times and then calls `usleep(250 us)` and retries. The rest is small: a cellSync
+mutex poll shared with the physics tasks (about 1.2 ms in the `func_00A499F8` area) and a few syscalls.
+
+**It is real waiting, not oversleep.** `PS3_USLEEP_SPIN_MAX=300` (spin instead of sleeping, so the main thread wakes
+the instant the lock frees) was tried against the default, two interleaved rounds each with the clock at 240 Hz:
+60.2 against 60.5 fps (pack 63.3 against 62.7), while main-thread CPU rose from 11.7 to 15.0 ms because it burns the
+wait. So the lock is held by job lanes that are still working; the barrier cannot finish sooner than they do.
+
+**More lanes are not possible.** The job lanes are already widened from 5 to 6 (`SPURS_HOST_SPUS=6`, a deliberate
+deviation); 6 is the most the game's job-list layout allows.
+
+## Measured: the job lanes (same profile)
+
+The translated job modules (`jobmod_*`) are about **28.7% of all CPU samples**; the SPU DMA emulation
+(`memmove`, `mfc_do_transfer`, `mfc_submit`) another 7% or so. One function, in module `67757f5f2148` at SPU address
+`0x4F80`, is **6.7% of all samples** on its own (about 1.1% on each of the six lanes): a large vector function that
+saves 28 registers to the local store on entry and works with 1.0f constants and byte shuffles (probably an
+animation or skinning job). So the frame's latency is the job lanes' work, and the work is real, which makes
+**faster translated SPU code and cheaper DMA copies** the lever.
+
+## Next experiments (not done)
+
+- How the translated SPU code is built (`PORT_SPU_OPT` is `-O2`, `-march=x86-64-v3`): try `-O3`, and look at the
+  helpers (`spu_rotqby`, the local-store accessors) for byte-shuffle and aliasing costs. Measure on the hot function
+  above with a micro-benchmark before rebuilding the whole tree.
+- The DMA path (`mfc_do_transfer` plus `memmove`): copy sizes and counts per frame, and whether copies that the
+  host could avoid (the data is already in guest memory) are being made.
+
 ## Plan, in order
 
 1. **Make a frame cheaper** (compiler options are exhausted, see above): trace the main thread's frame (`FTRACE=<prefix> work/tools/bench.sh`, and
