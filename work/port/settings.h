@@ -29,6 +29,11 @@ typedef struct port_settings {
     int stretch;        /* 0 keep the 16:9 shape (black bars), 1 fill the window (PS3RECOMP_STRETCH);
                          * read at start only */
     int fps;            /* 30 (the game's own) or 60 (PS3RECOMP_FPS, port_patches.cpp); read at start only */
+    int aniso;          /* anisotropic filtering of mip-mapped textures: 0 as the game asks, else 2, 4, 8 or 16 at least
+                         * (PS3RECOMP_ANISO, Vulkan backend); read at start only */
+    int detail;         /* distance detail: 0 as the game ships, 1 enhanced, 2 maximum (the game's own level-of-detail bias,
+                         * cull thresholds and shadow distance, PS3RECOMP_LOD_OFFSET / CULL_SCALE / SHADOW_DIST; also turns
+                         * on asynchronous recording); read at start only */
     /* [game] */
     int camera_shake;   /* 0 a steady camera (default), 1 the game's shake (PS3RECOMP_CAMERA_SHAKE) */
     int catch_up;       /* 60 fps mode: 0 every frame is 1/60 s (default), 1 a late frame makes up
@@ -62,7 +67,7 @@ enum {
     PORT_PIN_FULLSCREEN = 1 << 0, PORT_PIN_SCALE = 1 << 1, PORT_PIN_UPSCALER = 1 << 2,
     PORT_PIN_STRETCH = 1 << 3, PORT_PIN_FPS = 1 << 4, PORT_PIN_CAMERA_SHAKE = 1 << 5,
     PORT_PIN_CATCH_UP = 1 << 6, PORT_PIN_SKIP_START = 1 << 7, PORT_PIN_DEV_FLASH = 1 << 8,
-    PORT_PIN_SAVES = 1 << 9,
+    PORT_PIN_SAVES = 1 << 9, PORT_PIN_ANISO = 1 << 10, PORT_PIN_DETAIL = 1 << 11,
 };
 
 /* Before port_settings_export: note which fields the environment already

@@ -84,6 +84,53 @@ extern "C" uint8_t* vm_base;
 static inline uint32_t be32(uint32_t a) { const uint8_t* p = vm_base + a; return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3]; }
 static inline void wbe32(uint32_t a, uint32_t v) { uint8_t* p = vm_base + a; p[0] = v >> 24; p[1] = v >> 16; p[2] = v >> 8; p[3] = v; }
 
+/* Level of detail, culling and shadow distance: the game's own tuning table.
+ *
+ * /scripts/viewportquality.xml (inside ms2.psarc) is parsed by func_00360DD4 (and its alternate entry func_00360DD8)
+ * into floats: per object group a LOD bias (+0x0 of the group's structure), a cull threshold (+0xC) and a shadow cull
+ * threshold (+0x10), and in the general block a shadow fade distance modifier (+0x3C). patch_lift.py splices a call to
+ * port_vq_float after each of those stores; it adjusts the value just stored, for every group and every viewport tier:
+ *   PS3RECOMP_LOD_OFFSET=<f>   added to every LOD bias (negative: finer detail kept farther; default 0, range -8..8)
+ *   PS3RECOMP_CULL_SCALE=<f>   multiplies every cull threshold (below 1: smaller objects kept farther; default 1)
+ *   PS3RECOMP_SHADOW_DIST=<f>  multiplies the shadow fade distance (above 1: shadows reach farther; default 1)
+ * All default to no change. Each value changed is logged once per call site type, the first few times. */
+static float vq_env(const char* name, float def, float lo, float hi)
+{
+    const char* e = getenv(name);
+    if (!e || !*e) return def;
+    const float v = (float)atof(e);
+    return v < lo ? lo : v > hi ? hi : v;
+}
+
+extern "C++" void port_vq_float(uint32_t addr, int kind)
+{
+    static int init = 0;
+    static float lod_off, cull_scale, shadow_scale;
+    if (!init) {
+        init = 1;
+        lod_off = vq_env("PS3RECOMP_LOD_OFFSET", 0.0f, -8.0f, 8.0f);
+        cull_scale = vq_env("PS3RECOMP_CULL_SCALE", 1.0f, 0.02f, 10.0f);
+        shadow_scale = vq_env("PS3RECOMP_SHADOW_DIST", 1.0f, 0.1f, 10.0f);
+        if (lod_off != 0.0f || cull_scale != 1.0f || shadow_scale != 1.0f)
+            printf("[viewport] LOD offset %+.2f, cull threshold x%.2f, shadow distance x%.2f\n",
+                   (double)lod_off, (double)cull_scale, (double)shadow_scale);
+    }
+    static const char* const names[4] = { "lodBias", "cullThreshold", "shadowCullThreshold", "shadowFadeDistModifier" };
+    if (kind < 0 || kind > 3) return;
+    uint32_t b = be32(addr);
+    float v, o;
+    memcpy(&v, &b, 4);
+    o = v;
+    if (kind == 0) v += lod_off;
+    else if (kind == 3) v *= shadow_scale;
+    else v *= cull_scale;
+    if (v == o) return;
+    memcpy(&b, &v, 4);
+    wbe32(addr, b);
+    static int logged[4];
+    if (logged[kind]++ < 6) printf("[viewport] %s %.6f -> %.6f\n", names[kind], (double)o, (double)v);
+}
+
 /* Camera shake, off by default (both frame rates); PS3RECOMP_CAMERA_SHAKE=1
  * keeps the game's own. Two systems shake the picture: the chase camera's
  * shake springs (port_shake_skip below) and evo::camerasystem::Shake, the

@@ -344,6 +344,8 @@ std::string restart_note(const port_settings& s)
     auto add = [&](const char* w) { n += n.empty() ? "" : ", "; n += w; };
     if (!(pin & PORT_PIN_SCALE) && s.scale != g_boot.scale) add("resolution");
     if (!(pin & PORT_PIN_FPS) && s.fps != g_boot.fps) add("frame rate");
+    if (!(pin & PORT_PIN_ANISO) && s.aniso != g_boot.aniso) add("texture filtering");
+    if (!(pin & PORT_PIN_DETAIL) && s.detail != g_boot.detail) add("distance detail");
     if (!(pin & PORT_PIN_STRETCH) && s.stretch != g_boot.stretch) add("picture shape");
     if (!(pin & PORT_PIN_CAMERA_SHAKE) && s.camera_shake != g_boot.camera_shake) add("camera shake");
     if (!(pin & PORT_PIN_CATCH_UP) && s.catch_up != g_boot.catch_up) add("frame-time catch-up");
@@ -437,6 +439,26 @@ void page_display(port_settings& s)
     at_start_hint(s.scale != g_boot.scale);
     hint("The game renders at this multiple of the PS3's 1280x720. 1440p needs a mid-range "
          "GPU; 4K a fast one.");
+    /* Anisotropic filtering: sharper textures where a surface recedes (road and ground in the distance). */
+    static const char* const k_aniso[] = { "As the game asks", "2x", "4x", "8x", "16x" };
+    static const int k_aniso_v[] = { 0, 2, 4, 8, 16 };
+    int an = 0;
+    for (int i = 0; i < 5; i++) if (s.aniso == k_aniso_v[i]) an = i;
+    pin_begin(PORT_PIN_ANISO);
+    if (ImGui::Combo("Texture filtering", &an, k_aniso, 5)) { s.aniso = k_aniso_v[an]; save(); }
+    pin_end(PORT_PIN_ANISO);
+    at_start_hint(s.aniso != g_boot.aniso);
+    /* Distance detail: the game's own level-of-detail bias, cull thresholds and shadow distance, relaxed. */
+    static const char* const k_detail[] = { "Standard (as the game ships)", "Enhanced", "Maximum" };
+    int dt = s.detail < 0 ? 0 : s.detail > 2 ? 2 : s.detail;
+    pin_begin(PORT_PIN_DETAIL);
+    if (ImGui::Combo("Distance detail", &dt, k_detail, 3)) { s.detail = dt; save(); }
+    pin_end(PORT_PIN_DETAIL);
+    at_start_hint(s.detail != g_boot.detail);
+    hint("Keeps finer detail, smaller objects and longer shadows farther out (the game's own tuning, relaxed). "
+         "Costs CPU and render time: it holds 30 fps on a fast PC, but not 60. Takes effect after a restart.");
+    hint("Anisotropic filtering keeps ground and road textures sharp as they recede. A small GPU cost "
+         "(about 2% at 1440p 60 fps with 16x on a fast GPU).");
     /* The upscaler (AMD FSR 1 on Vulkan, MetalFX on Metal): takes the
      * presented frame to the window's size, applies now. */
 #ifdef __APPLE__
